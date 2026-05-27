@@ -4,6 +4,7 @@
 
 from fastapi import FastAPI
 from app.api.usuarioApi import router as usuario_router
+
 # Crear la aplicación con metadata para la documentación
 app = FastAPI(
     title="Modelo Ecommerce API",

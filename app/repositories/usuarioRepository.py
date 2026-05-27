@@ -4,8 +4,9 @@
 # No importa nada de FastAPI aquí.
 # ─────────────────────────────────────────────────────────────
 
-from app.domain.usuarioDomain import Usuario
+import bcrypt
 from typing import Optional
+from app.domain.usuarioDomain import Usuario
 
 
 class UsuarioRepository:
@@ -14,8 +15,6 @@ class UsuarioRepository:
         # Almacén en memoria: diccionario de objetos Usuario
         self._datos: dict[int, Usuario] = {}
         self._siguiente_id: int = 1
-
-    # ── CRUD básico ───────────────────────────────────────────
 
     def obtener_todos(self) -> list[Usuario]:
         return list(self._datos.values())
@@ -31,26 +30,30 @@ class UsuarioRepository:
 
     def crear(self, name: str, email: str, phone: str,
               role: str, password: str) -> Usuario:
+        # Encripta la contraseña con bcrypt antes de guardar
+        password_hash = bcrypt.hashpw(
+            password.encode("utf-8"),
+            bcrypt.gensalt()
+        ).decode("utf-8")
+
         nuevo = Usuario(
             id       = self._siguiente_id,
             name     = name,
             email    = email,
             phone    = phone,
             role     = role,
-            password = password,
+            password = password_hash,
         )
         self._datos[self._siguiente_id] = nuevo
         self._siguiente_id += 1
         return nuevo
 
-    def actualizar(self, id: int, data: dict) -> Optional[Usuario]:
-        usuario = self._datos.get(id)
-        if not usuario:
-            return None
-        for key, value in data.items():
-            if hasattr(usuario, key):
-                setattr(usuario, key, value)
-        return usuario
+    def verificar_password(self, password: str, hash: str) -> bool:
+        # Verifica la contraseña contra el hash almacenado
+        return bcrypt.checkpw(
+            password.encode("utf-8"),
+            hash.encode("utf-8")
+        )
 
     def eliminar(self, id: int) -> bool:
         if id in self._datos:
