@@ -3,30 +3,19 @@
 # Solo recibe peticiones y llama al servicio.
 # Aquí NO hay lógica de negocio.
 # HU-002: Registrar usuario
+# HU-003: Gestión de perfil de usuario
 # ─────────────────────────────────────────────────────────────
 
-<<<<<<< HEAD
 from fastapi import APIRouter, HTTPException, status, Header
 from typing import Optional
 from app.domain.usuarioDomain import UsuarioCreate, UsuarioUpdate, UsuarioResponse
-=======
-from fastapi import APIRouter, HTTPException, status
-from app.domain.usuarioDomain import UsuarioCreate, UsuarioResponse
->>>>>>> 51537c8f8bd7862feddc19e02aaf5fa029f8de2d
 from app.services.usuarioService import UsuarioService
 from app.services.dependencies import usuario_service as service
 
-# Router con prefijo y etiqueta para la documentación
 router = APIRouter(prefix="/api/v1/users", tags=["Usuarios"])
 
-# ── Simulación de obtener usuario desde el token JWT ─────────
-# En producción esto vendría de un middleware JWT real.
+
 def get_usuario_token(authorization: Optional[str] = None) -> dict:
-    """
-    Simula la decodificación del JWT.
-    Espera el header: Authorization: Bearer <userId>:<role>
-    Ejemplo: Authorization: Bearer 1:admin
-    """
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -36,7 +25,7 @@ def get_usuario_token(authorization: Optional[str] = None) -> dict:
                 "error": {"error_code": "UNAUTHORIZED"}
             }
         )
-    token = authorization.replace("Bearer ", "")
+    token = authorization.replace("Bearer ", "").strip()
     try:
         user_id, role = token.split(":")
         return {"id": int(user_id), "role": role}
@@ -49,9 +38,9 @@ def get_usuario_token(authorization: Optional[str] = None) -> dict:
                 "error": {"error_code": "INVALID_TOKEN"}
             }
         )
- 
- 
-# ── POST /api/v1/users — Registrar usuario ────────────────────
+
+
+# ── POST /api/v1/users ────────────────────────────────────────
 @router.post("/", response_model=UsuarioResponse,
              status_code=status.HTTP_201_CREATED)
 def registrar_usuario(datos: UsuarioCreate):
@@ -62,27 +51,17 @@ def registrar_usuario(datos: UsuarioCreate):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
-<<<<<<< HEAD
                 "success": False, "statusCode": 409,
                 "message": "El correo electrónico ya está registrado.",
                 "error": {
                     "error_code": "EMAIL_ALREADY_EXISTS",
                     "details": str(e),
                     "timestamp": "2026-03-17"
-=======
-                "success":    False,
-                "statusCode": 409,
-                "message":    "El correo electrónico ya está registrado.",
-                "error": {
-                    "error_code": "EMAIL_ALREADY_EXISTS",
-                    "details":    str(e),
-                    "timestamp":  "2026-03-17"
->>>>>>> 51537c8f8bd7862feddc19e02aaf5fa029f8de2d
                 }
             }
         )
- 
- 
+
+
 # ── POST /api/v1/users/register — Alias ──────────────────────
 @router.post("/register", response_model=UsuarioResponse,
              status_code=status.HTTP_201_CREATED)
@@ -94,7 +73,6 @@ def registrar_usuario_alias(datos: UsuarioCreate):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
-<<<<<<< HEAD
                 "success": False, "statusCode": 409,
                 "message": "El correo electrónico ya está registrado.",
                 "error": {
@@ -104,14 +82,14 @@ def registrar_usuario_alias(datos: UsuarioCreate):
                 }
             }
         )
- 
- 
-# ── GET /api/v1/users/{id} — Consultar perfil ────────────────
+
+
+# ── GET /api/v1/users/{id} ────────────────────────────────────
 @router.get("/{id}", response_model=UsuarioResponse,
             status_code=status.HTTP_200_OK)
 def obtener_usuario(id: int, authorization: Optional[str] = Header(None)):
     """Consulta los datos de un usuario. Requiere JWT."""
-    get_usuario_token(authorization)   # valida token
+    get_usuario_token(authorization)
     try:
         return service.obtener(id)
     except ValueError as e:
@@ -127,9 +105,9 @@ def obtener_usuario(id: int, authorization: Optional[str] = Header(None)):
                 }
             }
         )
- 
- 
-# ── PUT /api/v1/users/{id} — Actualizar perfil ───────────────
+
+
+# ── PUT /api/v1/users/{id} ────────────────────────────────────
 @router.put("/{id}", response_model=UsuarioResponse,
             status_code=status.HTTP_200_OK)
 def actualizar_usuario(id: int, datos: UsuarioUpdate,
@@ -171,9 +149,9 @@ def actualizar_usuario(id: int, datos: UsuarioUpdate,
                 "error": {"error_code": "EMAIL_ALREADY_EXISTS", "details": error_str}
             }
         )
- 
- 
-# ── DELETE /api/v1/users/{id} — Eliminar usuario (admin) ─────
+
+
+# ── DELETE /api/v1/users/{id} ─────────────────────────────────
 @router.delete("/{id}", response_model=UsuarioResponse,
                status_code=status.HTTP_200_OK)
 def eliminar_usuario(id: int, authorization: Optional[str] = Header(None)):
@@ -199,18 +177,6 @@ def eliminar_usuario(id: int, authorization: Optional[str] = Header(None)):
             detail={
                 "success": False, "statusCode": 404,
                 "message": "Usuario no encontrado.",
-                "error": {
-                    "error_code": "USER_NOT_FOUND",
-                    "details": str(e)
-=======
-                "success":    False,
-                "statusCode": 409,
-                "message":    "El correo electrónico ya está registrado.",
-                "error": {
-                    "error_code": "EMAIL_ALREADY_EXISTS",
-                    "details":    str(e),
-                    "timestamp":  "2026-03-17"
->>>>>>> 51537c8f8bd7862feddc19e02aaf5fa029f8de2d
-                }
+                "error": {"error_code": "USER_NOT_FOUND", "details": str(e)}
             }
         )
