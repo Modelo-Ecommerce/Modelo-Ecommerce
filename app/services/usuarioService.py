@@ -4,24 +4,18 @@
 # No importa nada de FastAPI aquí.
 # ─────────────────────────────────────────────────────────────
 
-<<<<<<< HEAD
 from app.domain.usuarioDomain import (
     UsuarioCreate, UsuarioLogin, UsuarioUpdate,
     UsuarioResponse, UsuarioData, UsuarioUpdateData, TokenData
 )
-=======
-from app.domain.usuarioDomain import UsuarioCreate, UsuarioResponse, UsuarioData
->>>>>>> 51537c8f8bd7862feddc19e02aaf5fa029f8de2d
 from app.repositories.usuarioRepository import UsuarioRepository
 
 
 class UsuarioService:
 
     def __init__(self, repo: UsuarioRepository):
-        # Inyección de dependencia: recibe el repositorio desde afuera
         self.repo = repo
 
-<<<<<<< HEAD
     def listar(self) -> list[UsuarioResponse]:
         return [UsuarioResponse(
             success    = True,
@@ -42,34 +36,31 @@ class UsuarioService:
         )
 
     def registrar(self, datos: UsuarioCreate) -> UsuarioResponse:
-            # Regla de aplicación: email no duplicado
-            if self.repo.obtener_por_email(datos.email):
-                raise ValueError(f"El correo {datos.email} ya está registrado")
+        # Regla de aplicación: email no duplicado
+        if self.repo.obtener_por_email(datos.email):
+            raise ValueError(f"El correo {datos.email} ya está registrado")
 
-            u = self.repo.crear(
-                name     = datos.name,
-                email    = datos.email,
-                phone    = datos.phone,
-                role     = datos.role,
-                password = datos.password,
-            )
+        u = self.repo.crear(
+            name     = datos.name,
+            email    = datos.email,
+            phone    = datos.phone,
+            role     = datos.role,
+            password = datos.password,
+        )
 
-            # Retorna respuesta estándar con datos del usuario (sin contraseña)
-            return UsuarioResponse(
-                success    = True,
-                statusCode = 201,
-                message    = "Usuario registrado correctamente.",
-                data       = UsuarioData(**u.to_response())
-            )
+        return UsuarioResponse(
+            success    = True,
+            statusCode = 201,
+            message    = "Usuario registrado correctamente.",
+            data       = UsuarioData(**u.to_response())
+        )
 
     def login(self, datos: UsuarioLogin) -> UsuarioResponse:
         u = self.repo.obtener_por_email(datos.email)
 
-        # Regla de negocio: credenciales inválidas
         if not u or not self.repo.verificar_password(datos.password, u.password):
             raise ValueError("Credenciales inválidas")
 
-        # Regla de negocio: InactiveUserException
         if not u.esta_activo():
             raise PermissionError(
                 "El usuario se encuentra inactivo y no puede iniciar sesión."
@@ -90,27 +81,22 @@ class UsuarioService:
 
     # ── HU-003: PUT /api/v1/users/{id} ───────────────────────
     def actualizar(self, id: int, datos: UsuarioUpdate, usuario_actual_id: int, usuario_actual_role: str) -> UsuarioResponse:
-        # Regla de negocio: cliente solo puede editar su propio perfil
         if usuario_actual_role == "client" and usuario_actual_id != id:
             raise PermissionError("No tienes permiso para editar el perfil de otro usuario.")
- 
-        # Regla de negocio: usuario debe existir
+
         u = self.repo.obtener_por_id(id)
         if not u:
             raise ValueError(f"Usuario con id {id} no encontrado")
- 
-        # Convertir solo los campos enviados (excluir None)
+
         data = datos.model_dump(exclude_none=True)
- 
-        # Regla de aplicación: email no duplicado en otro usuario
+
         if "email" in data:
             existente = self.repo.obtener_por_email(data["email"])
             if existente and existente.id != id:
                 raise ValueError(
                     f"El correo {data['email']} ya está registrado por otro usuario"
                 )
- 
-        # Regla de dominio: phone colombiano (ya validado por Pydantic en UsuarioUpdate)
+
         u = self.repo.actualizar(id, data)
         return UsuarioResponse(
             success    = True,
@@ -118,17 +104,15 @@ class UsuarioService:
             message    = "Perfil actualizado correctamente.",
             data       = UsuarioUpdateData(**u.to_update_response())
         )
- 
+
     # ── HU-003: DELETE /api/v1/users/{id} ────────────────────
     def eliminar(self, id: int, usuario_actual_role: str) -> UsuarioResponse:
-        # Regla de negocio: solo admin puede eliminar
         if usuario_actual_role != "admin":
             raise PermissionError("Solo un administrador puede eliminar usuarios.")
- 
-        # Regla de negocio: usuario debe existir
+
         if not self.repo.obtener_por_id(id):
             raise ValueError(f"Usuario con id {id} no encontrado")
- 
+
         self.repo.eliminar(id)
         return UsuarioResponse(
             success    = True,
@@ -138,28 +122,4 @@ class UsuarioService:
                 "userId":    id,
                 "deletedAt": __import__("datetime").date.today().isoformat()
             }
-=======
-    def registrar(self, datos: UsuarioCreate) -> UsuarioResponse:
-        # Regla de aplicación: email no duplicado
-        if self.repo.obtener_por_email(datos.email):
-            raise ValueError(
-                f"El correo {datos.email} ya está registrado"
-            )
-
-        # El repositorio encripta la contraseña con bcrypt
-        u = self.repo.crear(
-            name     = datos.name,
-            email    = datos.email,
-            phone    = datos.phone,
-            role     = datos.role,
-            password = datos.password,
-        )
-
-        # Retorna respuesta estándar con datos del usuario (sin contraseña)
-        return UsuarioResponse(
-            success    = True,
-            statusCode = 201,
-            message    = "Usuario registrado correctamente.",
-            data       = UsuarioData(**u.to_response())
->>>>>>> 51537c8f8bd7862feddc19e02aaf5fa029f8de2d
         )

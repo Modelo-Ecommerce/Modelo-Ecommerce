@@ -6,18 +6,12 @@
 
 import bcrypt
 from typing import Optional
-<<<<<<< HEAD
-import bcrypt
-
-=======
 from app.domain.usuarioDomain import Usuario
->>>>>>> 51537c8f8bd7862feddc19e02aaf5fa029f8de2d
 
 
 class UsuarioRepository:
 
     def __init__(self):
-        # Almacén en memoria: diccionario de objetos Usuario
         self._datos: dict[int, Usuario] = {}
         self._siguiente_id: int = 1
 
@@ -34,12 +28,7 @@ class UsuarioRepository:
         )
 
     def crear(self, name: str, email: str, phone: str,
-<<<<<<< HEAD
-            role: str, password: str) -> Usuario:
-=======
               role: str, password: str) -> Usuario:
->>>>>>> 51537c8f8bd7862feddc19e02aaf5fa029f8de2d
-        # Encripta la contraseña con bcrypt antes de guardar
         password_hash = bcrypt.hashpw(
             password.encode("utf-8"),
             bcrypt.gensalt()
@@ -57,21 +46,22 @@ class UsuarioRepository:
         self._siguiente_id += 1
         return nuevo
 
-    def verificar_password(self, password: str, hash: str) -> bool:
-        # Verifica la contraseña contra el hash almacenado
-        return bcrypt.checkpw(
-            password.encode("utf-8"),
-            hash.encode("utf-8")
-        )
+    def actualizar(self, id: int, data: dict) -> Optional[Usuario]:
+        usuario = self._datos.get(id)
+        if not usuario:
+            return None
+        for key, value in data.items():
+            if hasattr(usuario, key):
+                setattr(usuario, key, value)
+        return usuario
 
     def eliminar(self, id: int) -> bool:
         if id in self._datos:
             del self._datos[id]
             return True
         return False
-    
+
     def verificar_password(self, password: str, hash: str) -> bool:
-        # Verifica la contraseña ingresada contra el hash almacenado (bcrypt)
         return bcrypt.checkpw(
             password.encode("utf-8"),
             hash.encode("utf-8")

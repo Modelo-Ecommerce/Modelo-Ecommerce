@@ -5,13 +5,9 @@
 from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
 from app.api.usuarioApi import router as usuario_router
-<<<<<<< HEAD
 from app.api.authApi import router as auth_router
 
-=======
-
 # Crear la aplicación con metadata para la documentación
->>>>>>> 51537c8f8bd7862feddc19e02aaf5fa029f8de2d
 app = FastAPI(
     title="Modelo Ecommerce API",
     description="API REST para sistema de comercio electrónico",
@@ -38,7 +34,6 @@ def custom_openapi():
             "scheme": "bearer",
         }
     }
-    # Aplica seguridad a todos los endpoints
     for path in schema["paths"].values():
         for method in path.values():
             method["security"] = [{"bearerAuth": []}]
