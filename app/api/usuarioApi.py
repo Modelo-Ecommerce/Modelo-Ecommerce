@@ -2,15 +2,13 @@
 # CAPA API — rutas HTTP con FastAPI
 # Solo recibe peticiones y llama al servicio.
 # Aquí NO hay lógica de negocio.
+# HU-002: Registrar usuario
 # ─────────────────────────────────────────────────────────────
 
 from fastapi import APIRouter, HTTPException, status
-from app.domain.usuarioDomain import UsuarioCreate, UsuarioLogin, UsuarioResponse, TokenResponse
+from app.domain.usuarioDomain import UsuarioCreate, UsuarioResponse
 from app.services.usuarioService import UsuarioService
-from app.repositories.usuarioRepository import usuario_repository
-
-# Instanciar el servicio con inyección del repositorio
-service = UsuarioService(repo=usuario_repository)
+from app.services.dependencies import usuario_service as service
 
 # Router con prefijo y etiqueta para la documentación
 router = APIRouter(prefix="/api/v1/users", tags=["Usuarios"])
@@ -26,7 +24,16 @@ def registrar_usuario(datos: UsuarioCreate):
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=str(e)
+            detail={
+                "success":    False,
+                "statusCode": 409,
+                "message":    "El correo electrónico ya está registrado.",
+                "error": {
+                    "error_code": "EMAIL_ALREADY_EXISTS",
+                    "details":    str(e),
+                    "timestamp":  "2026-03-17"
+                }
+            }
         )
 
 
@@ -40,73 +47,14 @@ def registrar_usuario_alias(datos: UsuarioCreate):
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=str(e)
-        )
-
-
-# ── POST /api/v1/users/login — Iniciar sesión ─────────────────
-@router.post("/login", response_model=TokenResponse,
-             status_code=status.HTTP_200_OK)
-def login(datos: UsuarioLogin):
-    """Inicia sesión y retorna token JWT."""
-    try:
-        return service.login(datos)
-    except PermissionError as e:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=str(e)
-        )
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=str(e)
-        )
-
-
-# ── GET /api/v1/users — Listar usuarios ───────────────────────
-@router.get("/", response_model=list[UsuarioResponse],
-            status_code=status.HTTP_200_OK)
-def listar_usuarios():
-    """Retorna todos los usuarios registrados."""
-    return service.listar()
-
-
-# ── GET /api/v1/users/{id} — Consultar usuario ────────────────
-@router.get("/{id}", response_model=UsuarioResponse,
-            status_code=status.HTTP_200_OK)
-def obtener_usuario(id: int):
-    """Retorna un usuario por su ID."""
-    try:
-        return service.obtener(id)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e)
-        )
-
-
-# ── PUT /api/v1/users/{id} — Actualizar usuario ───────────────
-@router.put("/{id}", response_model=UsuarioResponse,
-            status_code=status.HTTP_200_OK)
-def actualizar_usuario(id: int, datos: dict):
-    """Actualiza los datos de un usuario."""
-    try:
-        return service.actualizar(id, datos)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
-
-
-# ── DELETE /api/v1/users/{id} — Eliminar usuario ─────────────
-@router.delete("/{id}", status_code=status.HTTP_200_OK)
-def eliminar_usuario(id: int):
-    """Elimina un usuario por ID. Solo administrador."""
-    try:
-        return service.eliminar(id)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e)
+            detail={
+                "success":    False,
+                "statusCode": 409,
+                "message":    "El correo electrónico ya está registrado.",
+                "error": {
+                    "error_code": "EMAIL_ALREADY_EXISTS",
+                    "details":    str(e),
+                    "timestamp":  "2026-03-17"
+                }
+            }
         )

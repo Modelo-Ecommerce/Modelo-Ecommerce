@@ -4,6 +4,8 @@
 
 from fastapi import FastAPI
 from app.api.usuarioApi import router as usuario_router
+from app.api.authApi import router as auth_router
+
 # Crear la aplicación con metadata para la documentación
 app = FastAPI(
     title="Modelo Ecommerce API",
@@ -11,8 +13,9 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Registrar el router de usuarios
+# Registrar routers
 app.include_router(usuario_router)
+app.include_router(auth_router)
 
 # Ruta raíz — bienvenida
 @app.get("/", tags=["Root"])

@@ -6,6 +6,8 @@
 
 from app.domain.usuarioDomain import Usuario
 from typing import Optional
+import bcrypt
+
 
 
 class UsuarioRepository:
@@ -30,14 +32,20 @@ class UsuarioRepository:
         )
 
     def crear(self, name: str, email: str, phone: str,
-              role: str, password: str) -> Usuario:
+            role: str, password: str) -> Usuario:
+        # Encripta la contraseña con bcrypt antes de guardar
+        password_hash = bcrypt.hashpw(
+            password.encode("utf-8"),
+            bcrypt.gensalt()
+        ).decode("utf-8")
+
         nuevo = Usuario(
             id       = self._siguiente_id,
             name     = name,
             email    = email,
             phone    = phone,
             role     = role,
-            password = password,
+            password = password_hash,
         )
         self._datos[self._siguiente_id] = nuevo
         self._siguiente_id += 1
@@ -57,6 +65,13 @@ class UsuarioRepository:
             del self._datos[id]
             return True
         return False
+    
+    def verificar_password(self, password: str, hash: str) -> bool:
+        # Verifica la contraseña ingresada contra el hash almacenado (bcrypt)
+        return bcrypt.checkpw(
+            password.encode("utf-8"),
+            hash.encode("utf-8")
+        )
 
 
 # Instancia única compartida (Singleton simple)

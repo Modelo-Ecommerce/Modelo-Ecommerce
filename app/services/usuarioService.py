@@ -4,7 +4,7 @@
 # No importa nada de FastAPI aquí.
 # ─────────────────────────────────────────────────────────────
 
-from app.domain.usuarioDomain import UsuarioCreate, UsuarioLogin, UsuarioResponse, TokenResponse
+from app.domain.usuarioDomain import UsuarioCreate, UsuarioLogin, UsuarioResponse, UsuarioData, TokenData
 from app.repositories.usuarioRepository import UsuarioRepository
 
 
@@ -15,34 +15,50 @@ class UsuarioService:
         self.repo = repo
 
     def listar(self) -> list[UsuarioResponse]:
-        return [UsuarioResponse(**u.to_response())
-                for u in self.repo.obtener_todos()]
+        return [UsuarioResponse(
+            success    = True,
+            statusCode = 200,
+            message    = "Lista de usuarios.",
+            data       = UsuarioData(**u.to_response())
+        ) for u in self.repo.obtener_todos()]
 
     def obtener(self, id: int) -> UsuarioResponse:
         u = self.repo.obtener_por_id(id)
         if not u:
             raise ValueError(f"Usuario con id {id} no encontrado")
-        return UsuarioResponse(**u.to_response())
+        return UsuarioResponse(
+            success    = True,
+            statusCode = 200,
+            message    = "Usuario encontrado.",
+            data       = UsuarioData(**u.to_response())
+        )
 
     def registrar(self, datos: UsuarioCreate) -> UsuarioResponse:
-        # Regla de aplicación: email no duplicado
-        if self.repo.obtener_por_email(datos.email):
-            raise ValueError(f"El correo {datos.email} ya está registrado")
+            # Regla de aplicación: email no duplicado
+            if self.repo.obtener_por_email(datos.email):
+                raise ValueError(f"El correo {datos.email} ya está registrado")
 
-        u = self.repo.crear(
-            name     = datos.name,
-            email    = datos.email,
-            phone    = datos.phone,
-            role     = datos.role,
-            password = datos.password,
-        )
-        return UsuarioResponse(**u.to_response())
+            u = self.repo.crear(
+                name     = datos.name,
+                email    = datos.email,
+                phone    = datos.phone,
+                role     = datos.role,
+                password = datos.password,
+            )
 
-    def login(self, datos: UsuarioLogin) -> TokenResponse:
+            # Retorna respuesta estándar con datos del usuario (sin contraseña)
+            return UsuarioResponse(
+                success    = True,
+                statusCode = 201,
+                message    = "Usuario registrado correctamente.",
+                data       = UsuarioData(**u.to_response())
+            )
+
+    def login(self, datos: UsuarioLogin) -> UsuarioResponse:
         u = self.repo.obtener_por_email(datos.email)
 
         # Regla de negocio: credenciales inválidas
-        if not u or not u.verificar_password(datos.password):
+        if not u or not self.repo.verificar_password(datos.password, u.password):
             raise ValueError("Credenciales inválidas")
 
         # Regla de negocio: InactiveUserException
@@ -51,12 +67,17 @@ class UsuarioService:
                 "El usuario se encuentra inactivo y no puede iniciar sesión."
             )
 
-        return TokenResponse(
-            userId = u.id,
-            name   = u.name,
-            email  = u.email,
-            role   = u.role,
-            token  = "jwt-token-simulado",
+        return UsuarioResponse(
+            success    = True,
+            statusCode = 200,
+            message    = "Inicio de sesión exitoso.",
+            data       = TokenData(
+                userId = u.id,
+                name   = u.name,
+                email  = u.email,
+                role   = u.role,
+                token  = "jwt-token-simulado",
+            )
         )
 
     def actualizar(self, id: int, data: dict) -> UsuarioResponse:
@@ -73,8 +94,19 @@ class UsuarioService:
             raise ValueError(f"Usuario con id {id} no encontrado")
         return UsuarioResponse(**u.to_response())
 
-    def eliminar(self, id: int) -> dict:
-        ok = self.repo.eliminar(id)
-        if not ok:
+    def actualizar(self, id: int, data: dict) -> UsuarioResponse:
+        if "email" in data:
+            existente = self.repo.obtener_por_email(data["email"])
+            if existente and existente.id != id:
+                raise ValueError(
+                    f"El correo {data['email']} ya está registrado por otro usuario"
+                )
+        u = self.repo.actualizar(id, data)
+        if not u:
             raise ValueError(f"Usuario con id {id} no encontrado")
-        return {"mensaje": f"Usuario {id} eliminado correctamente"}
+        return UsuarioResponse(
+            success    = True,
+            statusCode = 200,
+            message    = "Usuario actualizado correctamente.",
+            data       = UsuarioData(**u.to_response())
+        )
