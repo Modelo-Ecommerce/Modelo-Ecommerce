@@ -1,0 +1,27 @@
+# Entorno virtual
+venv/
+
+# Variables de entorno
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Base de datos local
+*.db
+*.sqlite3
+
+# VS Code
+.vscode/
+
+# Alembic
+alembic/versions/
+
+# Distribución
+dist/
+build/
+*.egg-info/
