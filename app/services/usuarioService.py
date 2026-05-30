@@ -4,7 +4,10 @@
 # No importa nada de FastAPI aquí.
 # ─────────────────────────────────────────────────────────────
 
-from app.domain.usuarioDomain import UsuarioCreate, UsuarioLogin, UsuarioResponse, UsuarioData, TokenData
+from app.domain.usuarioDomain import (
+    UsuarioCreate, UsuarioLogin, UsuarioUpdate,
+    UsuarioResponse, UsuarioData, UsuarioUpdateData, TokenData
+)
 from app.repositories.usuarioRepository import UsuarioRepository
 
 
@@ -80,7 +83,20 @@ class UsuarioService:
             )
         )
 
-    def actualizar(self, id: int, data: dict) -> UsuarioResponse:
+    # ── HU-003: PUT /api/v1/users/{id} ───────────────────────
+    def actualizar(self, id: int, datos: UsuarioUpdate, usuario_actual_id: int, usuario_actual_role: str) -> UsuarioResponse:
+        # Regla de negocio: cliente solo puede editar su propio perfil
+        if usuario_actual_role == "client" and usuario_actual_id != id:
+            raise PermissionError("No tienes permiso para editar el perfil de otro usuario.")
+ 
+        # Regla de negocio: usuario debe existir
+        u = self.repo.obtener_por_id(id)
+        if not u:
+            raise ValueError(f"Usuario con id {id} no encontrado")
+ 
+        # Convertir solo los campos enviados (excluir None)
+        data = datos.model_dump(exclude_none=True)
+ 
         # Regla de aplicación: email no duplicado en otro usuario
         if "email" in data:
             existente = self.repo.obtener_por_email(data["email"])
@@ -88,25 +104,33 @@ class UsuarioService:
                 raise ValueError(
                     f"El correo {data['email']} ya está registrado por otro usuario"
                 )
-
+ 
+        # Regla de dominio: phone colombiano (ya validado por Pydantic en UsuarioUpdate)
         u = self.repo.actualizar(id, data)
-        if not u:
-            raise ValueError(f"Usuario con id {id} no encontrado")
-        return UsuarioResponse(**u.to_response())
-
-    def actualizar(self, id: int, data: dict) -> UsuarioResponse:
-        if "email" in data:
-            existente = self.repo.obtener_por_email(data["email"])
-            if existente and existente.id != id:
-                raise ValueError(
-                    f"El correo {data['email']} ya está registrado por otro usuario"
-                )
-        u = self.repo.actualizar(id, data)
-        if not u:
-            raise ValueError(f"Usuario con id {id} no encontrado")
         return UsuarioResponse(
             success    = True,
             statusCode = 200,
-            message    = "Usuario actualizado correctamente.",
-            data       = UsuarioData(**u.to_response())
+            message    = "Perfil actualizado correctamente.",
+            data       = UsuarioUpdateData(**u.to_update_response())
+        )
+ 
+    # ── HU-003: DELETE /api/v1/users/{id} ────────────────────
+    def eliminar(self, id: int, usuario_actual_role: str) -> UsuarioResponse:
+        # Regla de negocio: solo admin puede eliminar
+        if usuario_actual_role != "admin":
+            raise PermissionError("Solo un administrador puede eliminar usuarios.")
+ 
+        # Regla de negocio: usuario debe existir
+        if not self.repo.obtener_por_id(id):
+            raise ValueError(f"Usuario con id {id} no encontrado")
+ 
+        self.repo.eliminar(id)
+        return UsuarioResponse(
+            success    = True,
+            statusCode = 204,
+            message    = "Usuario eliminado correctamente.",
+            data       = {
+                "userId":    id,
+                "deletedAt": __import__("datetime").date.today().isoformat()
+            }
         )

@@ -25,3 +25,5 @@ alembic/versions/
 dist/
 build/
 *.egg-info/
+
+main.py
