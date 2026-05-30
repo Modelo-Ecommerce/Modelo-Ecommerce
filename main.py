@@ -3,7 +3,9 @@
 # ─────────────────────────────────────────────────────────────
 
 from fastapi import FastAPI
+from fastapi.openapi.utils import get_openapi
 from app.api.usuarioApi import router as usuario_router
+from app.api.authApi import router as auth_router
 
 # Crear la aplicación con metadata para la documentación
 app = FastAPI(
@@ -12,8 +14,33 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Registrar el router de usuarios
+# Registrar routers
 app.include_router(usuario_router)
+app.include_router(auth_router)
+
+# ── Botón Authorize en Swagger ────────────────────────────────
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+    schema["components"]["securitySchemes"] = {
+        "bearerAuth": {
+            "type": "http",
+            "scheme": "bearer",
+        }
+    }
+    for path in schema["paths"].values():
+        for method in path.values():
+            method["security"] = [{"bearerAuth": []}]
+    app.openapi_schema = schema
+    return schema
+
+app.openapi = custom_openapi
 
 # Ruta raíz — bienvenida
 @app.get("/", tags=["Root"])
@@ -24,8 +51,6 @@ def root():
         "version": "1.0.0",
     }
 
-
-# ── Para correr directamente con: python main.py ─────────────
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
