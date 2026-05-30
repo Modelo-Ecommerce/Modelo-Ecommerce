@@ -5,9 +5,14 @@
 # HU-002: Registrar usuario
 # ─────────────────────────────────────────────────────────────
 
+<<<<<<< HEAD
 from fastapi import APIRouter, HTTPException, status, Header
 from typing import Optional
 from app.domain.usuarioDomain import UsuarioCreate, UsuarioUpdate, UsuarioResponse
+=======
+from fastapi import APIRouter, HTTPException, status
+from app.domain.usuarioDomain import UsuarioCreate, UsuarioResponse
+>>>>>>> 51537c8f8bd7862feddc19e02aaf5fa029f8de2d
 from app.services.usuarioService import UsuarioService
 from app.services.dependencies import usuario_service as service
 
@@ -57,12 +62,22 @@ def registrar_usuario(datos: UsuarioCreate):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
+<<<<<<< HEAD
                 "success": False, "statusCode": 409,
                 "message": "El correo electrónico ya está registrado.",
                 "error": {
                     "error_code": "EMAIL_ALREADY_EXISTS",
                     "details": str(e),
                     "timestamp": "2026-03-17"
+=======
+                "success":    False,
+                "statusCode": 409,
+                "message":    "El correo electrónico ya está registrado.",
+                "error": {
+                    "error_code": "EMAIL_ALREADY_EXISTS",
+                    "details":    str(e),
+                    "timestamp":  "2026-03-17"
+>>>>>>> 51537c8f8bd7862feddc19e02aaf5fa029f8de2d
                 }
             }
         )
@@ -79,6 +94,7 @@ def registrar_usuario_alias(datos: UsuarioCreate):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
+<<<<<<< HEAD
                 "success": False, "statusCode": 409,
                 "message": "El correo electrónico ya está registrado.",
                 "error": {
@@ -186,6 +202,15 @@ def eliminar_usuario(id: int, authorization: Optional[str] = Header(None)):
                 "error": {
                     "error_code": "USER_NOT_FOUND",
                     "details": str(e)
+=======
+                "success":    False,
+                "statusCode": 409,
+                "message":    "El correo electrónico ya está registrado.",
+                "error": {
+                    "error_code": "EMAIL_ALREADY_EXISTS",
+                    "details":    str(e),
+                    "timestamp":  "2026-03-17"
+>>>>>>> 51537c8f8bd7862feddc19e02aaf5fa029f8de2d
                 }
             }
         )

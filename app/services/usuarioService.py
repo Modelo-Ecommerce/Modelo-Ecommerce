@@ -4,10 +4,14 @@
 # No importa nada de FastAPI aquí.
 # ─────────────────────────────────────────────────────────────
 
+<<<<<<< HEAD
 from app.domain.usuarioDomain import (
     UsuarioCreate, UsuarioLogin, UsuarioUpdate,
     UsuarioResponse, UsuarioData, UsuarioUpdateData, TokenData
 )
+=======
+from app.domain.usuarioDomain import UsuarioCreate, UsuarioResponse, UsuarioData
+>>>>>>> 51537c8f8bd7862feddc19e02aaf5fa029f8de2d
 from app.repositories.usuarioRepository import UsuarioRepository
 
 
@@ -17,6 +21,7 @@ class UsuarioService:
         # Inyección de dependencia: recibe el repositorio desde afuera
         self.repo = repo
 
+<<<<<<< HEAD
     def listar(self) -> list[UsuarioResponse]:
         return [UsuarioResponse(
             success    = True,
@@ -133,4 +138,28 @@ class UsuarioService:
                 "userId":    id,
                 "deletedAt": __import__("datetime").date.today().isoformat()
             }
+=======
+    def registrar(self, datos: UsuarioCreate) -> UsuarioResponse:
+        # Regla de aplicación: email no duplicado
+        if self.repo.obtener_por_email(datos.email):
+            raise ValueError(
+                f"El correo {datos.email} ya está registrado"
+            )
+
+        # El repositorio encripta la contraseña con bcrypt
+        u = self.repo.crear(
+            name     = datos.name,
+            email    = datos.email,
+            phone    = datos.phone,
+            role     = datos.role,
+            password = datos.password,
+        )
+
+        # Retorna respuesta estándar con datos del usuario (sin contraseña)
+        return UsuarioResponse(
+            success    = True,
+            statusCode = 201,
+            message    = "Usuario registrado correctamente.",
+            data       = UsuarioData(**u.to_response())
+>>>>>>> 51537c8f8bd7862feddc19e02aaf5fa029f8de2d
         )

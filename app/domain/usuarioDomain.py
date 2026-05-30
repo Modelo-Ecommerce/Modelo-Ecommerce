@@ -33,8 +33,17 @@ class UsuarioCreate(BaseModel):
         if v not in ["client", "admin"]:
             raise ValueError("El rol debe ser 'client' o 'admin'")
         return v
+    
+    # ── REGLA DE NEGOCIO: email válido ───────────────────────
+    @field_validator("email")
+    @classmethod
+    def email_valido(cls, v):
+        if "@" not in v or "." not in v:
+            raise ValueError("El correo electrónico no es válido")
+        return v
 
 
+<<<<<<< HEAD
 # ── Schema de ENTRADA: Login ──────────────────────────────────
 class UsuarioLogin(BaseModel):
     email:    str = Field(..., description="Correo electrónico")
@@ -45,6 +54,14 @@ class UsuarioUpdate(BaseModel):
     name:  Optional[str] = Field(None, min_length=3, description="Nombre completo")
     email: Optional[str] = Field(None, description="Correo electrónico")
     phone: Optional[str] = Field(None, min_length=10, max_length=10)
+=======
+# ── Schema de SALIDA: Respuesta estándar ─────────────────────
+class UsuarioResponse(BaseModel):
+    success:    bool
+    statusCode: int
+    message:    str
+    data:       Optional[Any] = None
+>>>>>>> 51537c8f8bd7862feddc19e02aaf5fa029f8de2d
 
 
 # ── Schema de datos del usuario en la respuesta ───────────────
@@ -71,6 +88,7 @@ class UsuarioUpdateData(BaseModel):
     class Config:
         from_attributes = True
 
+<<<<<<< HEAD
 
 # ── Schema de datos del token en la respuesta ─────────────────
 class TokenData(BaseModel):
@@ -89,6 +107,8 @@ class UsuarioResponse(BaseModel):
     data:       Optional[Any] = None
 
 
+=======
+>>>>>>> 51537c8f8bd7862feddc19e02aaf5fa029f8de2d
 # ── Modelo interno del dominio (la "entidad real") ────────────
 class Usuario:
     def __init__(self, id: int, name: str, email: str,
@@ -99,10 +119,14 @@ class Usuario:
         self.phone     = phone
         self.role      = role
         self.password  = password
+<<<<<<< HEAD
         self.status    = "active"
+=======
+        self.status    = "active"  # siempre activo por defecto
+>>>>>>> 51537c8f8bd7862feddc19e02aaf5fa029f8de2d
         self.createdAt = str(date.today())
 
-    # REGLA DE NEGOCIO: usuario activo puede iniciar sesión
+    # REGLA DE NEGOCIO: usuario se crea siempre como activo
     def esta_activo(self) -> bool:
         return self.status == "active"
 
