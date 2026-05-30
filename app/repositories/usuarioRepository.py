@@ -6,7 +6,12 @@
 
 import bcrypt
 from typing import Optional
+<<<<<<< HEAD
+import bcrypt
+
+=======
 from app.domain.usuarioDomain import Usuario
+>>>>>>> 51537c8f8bd7862feddc19e02aaf5fa029f8de2d
 
 
 class UsuarioRepository:
@@ -29,7 +34,11 @@ class UsuarioRepository:
         )
 
     def crear(self, name: str, email: str, phone: str,
+<<<<<<< HEAD
+            role: str, password: str) -> Usuario:
+=======
               role: str, password: str) -> Usuario:
+>>>>>>> 51537c8f8bd7862feddc19e02aaf5fa029f8de2d
         # Encripta la contraseña con bcrypt antes de guardar
         password_hash = bcrypt.hashpw(
             password.encode("utf-8"),
@@ -60,6 +69,13 @@ class UsuarioRepository:
             del self._datos[id]
             return True
         return False
+    
+    def verificar_password(self, password: str, hash: str) -> bool:
+        # Verifica la contraseña ingresada contra el hash almacenado (bcrypt)
+        return bcrypt.checkpw(
+            password.encode("utf-8"),
+            hash.encode("utf-8")
+        )
 
 
 # Instancia única compartida (Singleton simple)
