@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
 from app.api.usuarioApi import router as usuario_router
 from app.api.authApi import router as auth_router
+from app.api.productoApi import router as producto_router
 
 # Crear la aplicación con metadata para la documentación
 app = FastAPI(
@@ -17,6 +18,7 @@ app = FastAPI(
 # Registrar routers
 app.include_router(usuario_router)
 app.include_router(auth_router)
+app.include_router(producto_router)
 
 # ── Botón Authorize en Swagger ────────────────────────────────
 def custom_openapi():
