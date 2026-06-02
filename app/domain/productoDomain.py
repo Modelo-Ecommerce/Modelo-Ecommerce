@@ -11,11 +11,19 @@ from datetime import date
 MIN_PRODUCT_PRICE = 10_000  # $10.000 COP
 
 
-# ── Excepción de dominio ──────────────────────────────────────
+# ── Excepciones de dominio ────────────────────────────────────
 class PriceBelowMinimumException(ValueError):
     def __init__(self):
         super().__init__(
-            f"El precio mínimo permitido es $10.000 COP (MIN_PRODUCT_PRICE)."
+            "El precio mínimo permitido es $10.000 COP (MIN_PRODUCT_PRICE)."
+        )
+
+
+class ProductHasActiveOrdersException(ValueError):
+    def __init__(self, producto_id: int):
+        super().__init__(
+            f"El producto con id {producto_id} está asociado a pedidos "
+            "en estado pending o processing."
         )
 
 
@@ -27,7 +35,6 @@ class ProductoCreate(BaseModel):
     stock:       int   = Field(..., ge=0, description="Stock inicial (>= 0)")
     categoryId:  int   = Field(..., description="ID de la categoría")
 
-    # ── REGLA DE DOMINIO: precio mínimo ──────────────────────
     @field_validator("price")
     @classmethod
     def precio_minimo(cls, v):
@@ -36,15 +43,33 @@ class ProductoCreate(BaseModel):
         return v
 
 
+# ── Schema de ENTRADA: Actualizar producto ────────────────────
+class ProductoUpdate(BaseModel):
+    name:        Optional[str]   = Field(None, min_length=3)
+    description: Optional[str]   = Field(None)
+    price:       Optional[float] = Field(None, description="Mínimo $10.000 COP")
+    categoryId:  Optional[int]   = Field(None)
+    # stock NO se incluye — se actualiza solo vía módulo Inventario
+
+    @field_validator("price")
+    @classmethod
+    def precio_minimo(cls, v):
+        if v is None:
+            return v
+        if v < MIN_PRODUCT_PRICE:
+            raise PriceBelowMinimumException()
+        return v
+
+
 # ── Schema de datos del producto en la respuesta ─────────────
 class ProductoData(BaseModel):
-    id:          int
-    name:        str
-    price:       float
-    stock:       int
-    categoryId:  int
-    status:      str = "active"
-    createdAt:   str
+    id:         int
+    name:       str
+    price:      float
+    stock:      int
+    categoryId: int
+    status:     str = "active"
+    createdAt:  str
 
     class Config:
         from_attributes = True
@@ -68,11 +93,15 @@ class Producto:
         self.price       = price
         self.stock       = stock
         self.categoryId  = categoryId
-        self.status      = "active"  # siempre activo por defecto
+        self.status      = "active"
         self.createdAt   = str(date.today())
 
     def esta_activo(self) -> bool:
         return self.status == "active"
+
+    def discontinuar(self):
+        """Soft-delete: marca el producto como discontinuado."""
+        self.status = "discontinued"
 
     def to_response(self) -> dict:
         return {

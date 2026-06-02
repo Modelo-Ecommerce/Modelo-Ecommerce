@@ -5,22 +5,20 @@
 # ─────────────────────────────────────────────────────────────
 
 from app.domain.productoDomain import (
-    ProductoCreate, ProductoResponse, ProductoData, PriceBelowMinimumException
+    ProductoCreate, ProductoUpdate, ProductoResponse, ProductoData,
+    PriceBelowMinimumException, ProductHasActiveOrdersException
 )
 from app.repositories.productoRepository import ProductoRepository
 from app.repositories.categoriaRepository import CategoriaRepository
+from app.repositories.pedidoRepository import PedidoRepository
 
 
 class InventoryService:
-    """
-    Servicio de inventario — inicializa y gestiona el stock.
-    ProductService lo llama automáticamente al crear un producto.
-    """
+    """Inicializa y gestiona el stock."""
     def __init__(self, repo: ProductoRepository):
         self.repo = repo
 
     def inicializar_stock(self, producto_id: int, stock: int) -> None:
-        """Inicializa el stock de un producto recién creado."""
         self.repo.actualizar_stock(producto_id, stock)
 
 
@@ -28,23 +26,21 @@ class ProductoService:
 
     def __init__(self, repo: ProductoRepository,
                  categoria_repo: CategoriaRepository,
+                 pedido_repo: PedidoRepository,
                  inventory_service: InventoryService):
         self.repo              = repo
         self.categoria_repo    = categoria_repo
+        self.pedido_repo       = pedido_repo
         self.inventory_service = inventory_service
 
     # ── HU-004: POST /api/v1/products ────────────────────────
     def crear(self, datos: ProductoCreate, usuario_role: str) -> ProductoResponse:
-        # Regla de negocio: solo admin puede crear productos
         if usuario_role != "admin":
             raise PermissionError("Solo un administrador puede crear productos.")
 
-        # Regla de negocio: categoryId debe existir
-        # (PriceBelowMinimumException ya fue lanzada por Pydantic al validar)
         if not self.categoria_repo.existe(datos.categoryId):
             raise ValueError(f"La categoría con id {datos.categoryId} no existe.")
 
-        # Crear el producto
         p = self.repo.crear(
             name        = datos.name,
             description = datos.description,
@@ -53,13 +49,67 @@ class ProductoService:
             categoryId  = datos.categoryId,
         )
 
-        # Llamar automáticamente a InventoryService para inicializar stock
         self.inventory_service.inicializar_stock(p.id, datos.stock)
 
         return ProductoResponse(
             success    = True,
             statusCode = 201,
             message    = "Producto creado correctamente.",
+            data       = ProductoData(**p.to_response())
+        )
+
+    # ── HU-005: DELETE /api/v1/products/{id} ─────────────────
+    def eliminar(self, id: int, usuario_role: str) -> ProductoResponse:
+        # Regla de negocio: solo admin
+        if usuario_role != "admin":
+            raise PermissionError("Solo un administrador puede eliminar productos.")
+
+        # Regla de negocio: producto debe existir
+        p = self.repo.obtener_por_id(id)
+        if not p:
+            raise ValueError(f"Producto con id {id} no encontrado.")
+
+        # Regla de negocio: no puede tener pedidos activos
+        if self.pedido_repo.tiene_pedidos_activos(id):
+            raise ProductHasActiveOrdersException(id)
+
+        # Soft-delete: status = "discontinued"
+        p = self.repo.discontinuar(id)
+        return ProductoResponse(
+            success    = True,
+            statusCode = 200,
+            message    = "Producto eliminado correctamente.",
+            data       = ProductoData(**p.to_response())
+        )
+
+    # ── HU-005: PUT /api/v1/products/{id} ────────────────────
+    def actualizar(self, id: int, datos: ProductoUpdate,
+                   usuario_role: str) -> ProductoResponse:
+        # Regla de negocio: solo admin
+        if usuario_role != "admin":
+            raise PermissionError("Solo un administrador puede actualizar productos.")
+
+        # Regla de negocio: producto debe existir
+        p = self.repo.obtener_por_id(id)
+        if not p:
+            raise ValueError(f"Producto con id {id} no encontrado.")
+
+        # Convertir solo los campos enviados (excluir None y stock)
+        data = datos.model_dump(exclude_none=True)
+        data.pop("stock", None)  # stock no se actualiza por este endpoint
+
+        # Regla de negocio: categoryId debe existir si se envía
+        if "categoryId" in data:
+            if not self.categoria_repo.existe(data["categoryId"]):
+                raise ValueError(
+                    f"La categoría con id {data['categoryId']} no existe."
+                )
+
+        p = self.repo.actualizar(id, data)
+        return ProductoResponse(
+            success    = True,
+            statusCode = 200,
+            message    = "Producto actualizado correctamente.",
             data       = ProductoData(**p.to_response())
         )
 
