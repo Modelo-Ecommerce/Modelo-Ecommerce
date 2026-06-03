@@ -7,8 +7,8 @@ from fastapi.openapi.utils import get_openapi
 from app.api.usuarioApi import router as usuario_router
 from app.api.authApi import router as auth_router
 from app.api.productoApi import router as producto_router
+from app.api.carritoApi import router as carrito_router
 
-# Crear la aplicación con metadata para la documentación
 app = FastAPI(
     title="Modelo Ecommerce API",
     description="API REST para sistema de comercio electrónico",
@@ -19,6 +19,7 @@ app = FastAPI(
 app.include_router(usuario_router)
 app.include_router(auth_router)
 app.include_router(producto_router)
+app.include_router(carrito_router)
 
 # ── Botón Authorize en Swagger ────────────────────────────────
 def custom_openapi():
@@ -44,7 +45,6 @@ def custom_openapi():
 
 app.openapi = custom_openapi
 
-# Ruta raíz — bienvenida
 @app.get("/", tags=["Root"])
 def root():
     return {
