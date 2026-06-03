@@ -4,9 +4,10 @@
 # Aquí NO hay lógica de negocio.
 # HU-004: Crear producto
 # HU-005: Eliminar y actualizar producto
+# HU-006: Consultar catálogo de productos
 # ─────────────────────────────────────────────────────────────
 
-from fastapi import APIRouter, HTTPException, status, Header
+from fastapi import APIRouter, HTTPException, status, Header, Query
 from typing import Optional
 from app.domain.productoDomain import (
     ProductoCreate, ProductoUpdate, ProductoResponse,
@@ -69,7 +70,55 @@ def _handle_price_error(e: PriceBelowMinimumException):
     )
 
 
-# ── POST /api/v1/products ─────────────────────────────────────
+# ── GET /api/v1/products — Catálogo público ───────────────────
+@router.get("/", response_model=ProductoResponse,
+            status_code=status.HTTP_200_OK)
+def catalogo_productos(
+    category:  Optional[int]   = Query(None, description="Filtrar por categoryId"),
+    minPrice:  Optional[float] = Query(None, description="Precio mínimo en COP"),
+    maxPrice:  Optional[float] = Query(None, description="Precio máximo en COP"),
+    page:      int             = Query(1,    ge=1, description="Número de página"),
+    limit:     int             = Query(10,   ge=1, le=100, description="Resultados por página"),
+):
+    """Lista el catálogo público. Solo productos activos. Sin autenticación."""
+    try:
+        return service.catalogo(
+            category  = category,
+            min_price = minPrice,
+            max_price = maxPrice,
+            page      = page,
+            limit     = limit,
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "success": False, "statusCode": 400,
+                "message": str(e),
+                "error": {"error_code": "VALIDATION_ERROR"}
+            }
+        )
+
+
+# ── GET /api/v1/products/{id} — Detalle público ───────────────
+@router.get("/{id}", response_model=ProductoResponse,
+            status_code=status.HTTP_200_OK)
+def detalle_producto(id: int):
+    """Detalle de un producto. Sin autenticación."""
+    try:
+        return service.detalle_publico(id)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "success": False, "statusCode": 404,
+                "message": "Producto no encontrado.",
+                "error": {"error_code": "PRODUCT_NOT_FOUND", "details": str(e)}
+            }
+        )
+
+
+# ── POST /api/v1/products — Crear producto (admin) ───────────
 @router.post("/", response_model=ProductoResponse,
              status_code=status.HTTP_201_CREATED)
 def crear_producto(datos: ProductoCreate,
@@ -103,35 +152,7 @@ def crear_producto(datos: ProductoCreate,
         )
 
 
-# ── GET /api/v1/products ──────────────────────────────────────
-@router.get("/", response_model=ProductoResponse,
-            status_code=status.HTTP_200_OK)
-def listar_productos(authorization: Optional[str] = Header(None)):
-    """Lista todos los productos."""
-    get_usuario_token(authorization)
-    return service.listar()
-
-
-# ── GET /api/v1/products/{id} ─────────────────────────────────
-@router.get("/{id}", response_model=ProductoResponse,
-            status_code=status.HTTP_200_OK)
-def obtener_producto(id: int, authorization: Optional[str] = Header(None)):
-    """Obtiene un producto por ID."""
-    get_usuario_token(authorization)
-    try:
-        return service.obtener(id)
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "success": False, "statusCode": 404,
-                "message": "Producto no encontrado.",
-                "error": {"error_code": "PRODUCT_NOT_FOUND", "details": str(e)}
-            }
-        )
-
-
-# ── PUT /api/v1/products/{id} ─────────────────────────────────
+# ── PUT /api/v1/products/{id} — Actualizar producto (admin) ──
 @router.put("/{id}", response_model=ProductoResponse,
             status_code=status.HTTP_200_OK)
 def actualizar_producto(id: int, datos: ProductoUpdate,
@@ -165,7 +186,7 @@ def actualizar_producto(id: int, datos: ProductoUpdate,
         )
 
 
-# ── DELETE /api/v1/products/{id} ──────────────────────────────
+# ── DELETE /api/v1/products/{id} — Eliminar producto (admin) ─
 @router.delete("/{id}", response_model=ProductoResponse,
                status_code=status.HTTP_200_OK)
 def eliminar_producto(id: int, authorization: Optional[str] = Header(None)):
