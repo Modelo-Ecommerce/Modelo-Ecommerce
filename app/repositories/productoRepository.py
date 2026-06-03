@@ -34,11 +34,28 @@ class ProductoRepository:
         self._siguiente_id += 1
         return nuevo
 
+    def actualizar(self, id: int, data: dict) -> Optional[Producto]:
+        producto = self._datos.get(id)
+        if not producto:
+            return None
+        for key, value in data.items():
+            if hasattr(producto, key):
+                setattr(producto, key, value)
+        return producto
+
     def actualizar_stock(self, id: int, stock: int) -> Optional[Producto]:
         producto = self._datos.get(id)
         if not producto:
             return None
         producto.stock = stock
+        return producto
+
+    def discontinuar(self, id: int) -> Optional[Producto]:
+        """Soft-delete: cambia status a discontinued."""
+        producto = self._datos.get(id)
+        if not producto:
+            return None
+        producto.discontinuar()
         return producto
 
     def eliminar(self, id: int) -> bool:
