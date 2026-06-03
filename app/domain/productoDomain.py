@@ -4,7 +4,7 @@
 # ─────────────────────────────────────────────────────────────
 
 from pydantic import BaseModel, Field, field_validator
-from typing import Optional, Any
+from typing import Optional, Any, List
 from datetime import date
 
 # ── Regla de dominio: precio mínimo ──────────────────────────
@@ -61,7 +61,7 @@ class ProductoUpdate(BaseModel):
         return v
 
 
-# ── Schema de datos del producto en la respuesta ─────────────
+# ── Schema de datos del producto en la respuesta (admin) ─────
 class ProductoData(BaseModel):
     id:         int
     name:       str
@@ -73,6 +73,48 @@ class ProductoData(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ── Schema de datos del producto en el catálogo público ──────
+class ProductoCatalogoItem(BaseModel):
+    id:         int
+    name:       str
+    price:      float
+    stock:      int
+    categoryId: int
+    imageUrl:   str
+
+    class Config:
+        from_attributes = True
+
+
+# ── Schema de datos del producto detalle público ─────────────
+class ProductoDetalleData(BaseModel):
+    id:          int
+    name:        str
+    description: str
+    price:       float
+    stock:       int
+    categoryId:  int
+    imageUrl:    str
+    createdAt:   str
+
+    class Config:
+        from_attributes = True
+
+
+# ── Schema de paginación ──────────────────────────────────────
+class Pagination(BaseModel):
+    total:      int
+    page:       int
+    limit:      int
+    totalPages: int
+
+
+# ── Schema de catálogo paginado ───────────────────────────────
+class CatalogoData(BaseModel):
+    products:   List[ProductoCatalogoItem]
+    pagination: Pagination
 
 
 # ── Schema de SALIDA: Respuesta estándar ─────────────────────
@@ -103,6 +145,9 @@ class Producto:
         """Soft-delete: marca el producto como discontinuado."""
         self.status = "discontinued"
 
+    def get_image_url(self) -> str:
+        return f"https://cdn.ecommerce.com/productos/{self.id}.jpg"
+
     def to_response(self) -> dict:
         return {
             "id":         self.id,
@@ -112,4 +157,26 @@ class Producto:
             "categoryId": self.categoryId,
             "status":     self.status,
             "createdAt":  self.createdAt,
+        }
+
+    def to_catalogo_item(self) -> dict:
+        return {
+            "id":         self.id,
+            "name":       self.name,
+            "price":      self.price,
+            "stock":      self.stock,
+            "categoryId": self.categoryId,
+            "imageUrl":   self.get_image_url(),
+        }
+
+    def to_detalle(self) -> dict:
+        return {
+            "id":          self.id,
+            "name":        self.name,
+            "description": self.description,
+            "price":       self.price,
+            "stock":       self.stock,
+            "categoryId":  self.categoryId,
+            "imageUrl":    self.get_image_url(),
+            "createdAt":   self.createdAt,
         }

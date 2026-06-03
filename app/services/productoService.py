@@ -4,8 +4,11 @@
 # No importa nada de FastAPI aquí.
 # ─────────────────────────────────────────────────────────────
 
+import math
+from typing import Optional
 from app.domain.productoDomain import (
     ProductoCreate, ProductoUpdate, ProductoResponse, ProductoData,
+    ProductoCatalogoItem, ProductoDetalleData, CatalogoData, Pagination,
     PriceBelowMinimumException, ProductHasActiveOrdersException
 )
 from app.repositories.productoRepository import ProductoRepository
@@ -37,10 +40,8 @@ class ProductoService:
     def crear(self, datos: ProductoCreate, usuario_role: str) -> ProductoResponse:
         if usuario_role != "admin":
             raise PermissionError("Solo un administrador puede crear productos.")
-
         if not self.categoria_repo.existe(datos.categoryId):
             raise ValueError(f"La categoría con id {datos.categoryId} no existe.")
-
         p = self.repo.crear(
             name        = datos.name,
             description = datos.description,
@@ -48,9 +49,7 @@ class ProductoService:
             stock       = datos.stock,
             categoryId  = datos.categoryId,
         )
-
         self.inventory_service.inicializar_stock(p.id, datos.stock)
-
         return ProductoResponse(
             success    = True,
             statusCode = 201,
@@ -60,20 +59,13 @@ class ProductoService:
 
     # ── HU-005: DELETE /api/v1/products/{id} ─────────────────
     def eliminar(self, id: int, usuario_role: str) -> ProductoResponse:
-        # Regla de negocio: solo admin
         if usuario_role != "admin":
             raise PermissionError("Solo un administrador puede eliminar productos.")
-
-        # Regla de negocio: producto debe existir
         p = self.repo.obtener_por_id(id)
         if not p:
             raise ValueError(f"Producto con id {id} no encontrado.")
-
-        # Regla de negocio: no puede tener pedidos activos
         if self.pedido_repo.tiene_pedidos_activos(id):
             raise ProductHasActiveOrdersException(id)
-
-        # Soft-delete: status = "discontinued"
         p = self.repo.discontinuar(id)
         return ProductoResponse(
             success    = True,
@@ -85,31 +77,86 @@ class ProductoService:
     # ── HU-005: PUT /api/v1/products/{id} ────────────────────
     def actualizar(self, id: int, datos: ProductoUpdate,
                    usuario_role: str) -> ProductoResponse:
-        # Regla de negocio: solo admin
         if usuario_role != "admin":
             raise PermissionError("Solo un administrador puede actualizar productos.")
-
-        # Regla de negocio: producto debe existir
         p = self.repo.obtener_por_id(id)
         if not p:
             raise ValueError(f"Producto con id {id} no encontrado.")
-
-        # Convertir solo los campos enviados (excluir None y stock)
         data = datos.model_dump(exclude_none=True)
-        data.pop("stock", None)  # stock no se actualiza por este endpoint
-
-        # Regla de negocio: categoryId debe existir si se envía
+        data.pop("stock", None)
         if "categoryId" in data:
             if not self.categoria_repo.existe(data["categoryId"]):
-                raise ValueError(
-                    f"La categoría con id {data['categoryId']} no existe."
-                )
-
+                raise ValueError(f"La categoría con id {data['categoryId']} no existe.")
         p = self.repo.actualizar(id, data)
         return ProductoResponse(
             success    = True,
             statusCode = 200,
             message    = "Producto actualizado correctamente.",
+            data       = ProductoData(**p.to_response())
+        )
+
+    # ── HU-006: GET /api/v1/products (catálogo público) ──────
+    def catalogo(self,
+                 category:  Optional[int]   = None,
+                 min_price: Optional[float] = None,
+                 max_price: Optional[float] = None,
+                 page:      int = 1,
+                 limit:     int = 10) -> ProductoResponse:
+
+        # Regla de dominio: solo productos activos en el catálogo público
+        productos = [p for p in self.repo.obtener_todos() if p.esta_activo()]
+
+        # Filtros opcionales
+        if category is not None:
+            productos = [p for p in productos if p.categoryId == category]
+        if min_price is not None:
+            productos = [p for p in productos if p.price >= min_price]
+        if max_price is not None:
+            productos = [p for p in productos if p.price <= max_price]
+
+        # Paginación
+        total       = len(productos)
+        total_pages = max(1, math.ceil(total / limit))
+        inicio      = (page - 1) * limit
+        fin         = inicio + limit
+        pagina      = productos[inicio:fin]
+
+        return ProductoResponse(
+            success    = True,
+            statusCode = 200,
+            message    = "Catálogo obtenido correctamente.",
+            data       = CatalogoData(
+                products   = [ProductoCatalogoItem(**p.to_catalogo_item()) for p in pagina],
+                pagination = Pagination(
+                    total      = total,
+                    page       = page,
+                    limit      = limit,
+                    totalPages = total_pages,
+                )
+            )
+        )
+
+    # ── HU-006: GET /api/v1/products/{id} (detalle público) ──
+    def detalle_publico(self, id: int) -> ProductoResponse:
+        p = self.repo.obtener_por_id(id)
+        if not p:
+            raise ValueError(f"Producto con id {id} no encontrado.")
+        return ProductoResponse(
+            success    = True,
+            statusCode = 200,
+            message    = "Producto obtenido correctamente.",
+            data       = ProductoDetalleData(**p.to_detalle())
+        )
+
+    # ── Interno: obtener por id (admin) ───────────────────────
+    def obtener(self, id: int) -> ProductoResponse:
+        p = self.repo.obtener_por_id(id)
+        if not p:
+            raise ValueError(f"Producto con id {id} no encontrado.")
+        return ProductoResponse(
+            success    = True,
+            statusCode = 200,
+            message    = "Producto encontrado.",
             data       = ProductoData(**p.to_response())
         )
 
@@ -120,15 +167,4 @@ class ProductoService:
             statusCode = 200,
             message    = "Lista de productos.",
             data       = [ProductoData(**p.to_response()) for p in productos]
-        )
-
-    def obtener(self, id: int) -> ProductoResponse:
-        p = self.repo.obtener_por_id(id)
-        if not p:
-            raise ValueError(f"Producto con id {id} no encontrado.")
-        return ProductoResponse(
-            success    = True,
-            statusCode = 200,
-            message    = "Producto encontrado.",
-            data       = ProductoData(**p.to_response())
         )
