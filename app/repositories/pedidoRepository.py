@@ -1,34 +1,42 @@
 # ─────────────────────────────────────────────────────────────
-# CAPA REPOSITORIO — Pedidos (stub para HU-005)
-# Contiene pedidos de prueba precargados para validar
-# que no existan pedidos activos al eliminar un producto.
-# Será reemplazado cuando se implemente la HU de pedidos.
+# CAPA REPOSITORIO — Pedidos
+# Almacén en memoria de pedidos reales.
 # ─────────────────────────────────────────────────────────────
+
+from typing import Optional
+from app.domain.pedidoDomain import Pedido
 
 
 class PedidoRepository:
 
     def __init__(self):
-        # Pedidos de prueba precargados
-        # Formato: { pedido_id: { "productId": int, "status": str } }
-        self._datos: dict[int, dict] = {
-            1: {"productId": 99, "status": "pending"},
-            2: {"productId": 99, "status": "processing"},
-            3: {"productId": 98, "status": "completed"},
-        }
+        self._datos: dict[int, Pedido] = {}
+        self._siguiente_id: int = 1
+
+    def crear(self, pedido: Pedido) -> Pedido:
+        pedido.order_id = self._siguiente_id
+        self._datos[self._siguiente_id] = pedido
+        self._siguiente_id += 1
+        return pedido
+
+    def obtener_por_id(self, id: int) -> Optional[Pedido]:
+        return self._datos.get(id)
+
+    def obtener_por_usuario(self, user_id: int) -> list[Pedido]:
+        return [p for p in self._datos.values() if p.user_id == user_id]
 
     def tiene_pedidos_activos(self, producto_id: int) -> bool:
-        """
-        Verifica si un producto tiene pedidos en estado
-        'pending' o 'processing'.
-        El producto con id 99 tiene pedidos activos (para probar el 409).
-        Cualquier otro producto NO tiene pedidos activos.
-        """
+        """Verifica si un producto tiene pedidos pending o processing."""
         estados_activos = {"pending", "processing"}
         return any(
-            p["productId"] == producto_id and p["status"] in estados_activos
+            any(item.product_id == producto_id for item in p.items)
+            and p.status in estados_activos
             for p in self._datos.values()
         )
+
+    def guardar(self, pedido: Pedido) -> Pedido:
+        self._datos[pedido.order_id] = pedido
+        return pedido
 
 
 # Instancia única compartida (Singleton simple)

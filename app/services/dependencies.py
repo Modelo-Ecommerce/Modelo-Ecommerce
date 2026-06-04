@@ -14,6 +14,8 @@ from app.services.productoService import ProductoService, InventoryService
 from app.repositories.carritoRepository import carrito_repository
 from app.services.carritoService import CartService
 
+from app.services.pedidoService import OrderService, PaymentService
+
 # ── Usuarios ──────────────────────────────────────────────────
 usuario_service = UsuarioService(repo=usuario_repository)
 
@@ -30,4 +32,13 @@ producto_service  = ProductoService(
 cart_service = CartService(
     carrito_repo  = carrito_repository,
     producto_repo = producto_repository,
+)
+
+# ── Pedidos ───────────────────────────────────────────────────
+payment_service = PaymentService()
+order_service   = OrderService(
+    pedido_repo     = pedido_repository,
+    carrito_repo    = carrito_repository,
+    producto_repo   = producto_repository,
+    payment_service = payment_service,
 )
