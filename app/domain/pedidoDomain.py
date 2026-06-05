@@ -11,6 +11,16 @@ from datetime import date
 MIN_ORDER_AMOUNT  = 60_000
 MIN_CART_QUANTITY = 3
 
+# ── Flujo de transiciones válidas ─────────────────────────────
+TRANSICIONES_VALIDAS = {
+    "pending":    "processing",
+    "processing": "shipped",
+    "shipped":    "delivered",
+}
+
+# ── Estados no actualizables ──────────────────────────────────
+ESTADOS_NO_ACTUALIZABLES = {"cancelled", "failed"}
+
 
 # ── Excepciones de dominio ────────────────────────────────────
 class MinimumOrderAmountException(ValueError):
@@ -38,6 +48,19 @@ class OrderNotCancellableException(ValueError):
             f"Estado actual: {current_status}."
         )
 
+class InvalidStatusTransitionException(ValueError):
+    def __init__(self, current_status: str, new_status: str):
+        super().__init__(
+            f"No se puede cambiar de {current_status} a {new_status}. "
+            f"Transiciones válidas: pending → processing → shipped → delivered."
+        )
+
+class OrderNotUpdatableException(ValueError):
+    def __init__(self, current_status: str):
+        super().__init__(
+            f"El pedido en estado {current_status} no puede ser actualizado."
+        )
+
 
 # ── Schema de ENTRADA: Dirección de envío ────────────────────
 class DireccionEnvio(BaseModel):
@@ -63,13 +86,26 @@ class PedidoCreate(BaseModel):
         return v
 
 
-# ── Schema de datos del pago ──────────────────────────────────
+# ── Schema de ENTRADA: Actualizar estado ─────────────────────
+class PedidoStatusUpdate(BaseModel):
+    status: str = Field(..., description="processing | shipped | delivered")
+
+    @field_validator("status")
+    @classmethod
+    def estado_valido(cls, v):
+        estados = {"processing", "shipped", "delivered"}
+        if v not in estados:
+            raise ValueError(
+                f"Estado inválido. Use: {', '.join(estados)}"
+            )
+        return v
+
+
+# ── Schemas de datos ──────────────────────────────────────────
 class PagoData(BaseModel):
     paymentId: int
     status:    str
 
-
-# ── Schema de datos de un ítem del pedido ────────────────────
 class PedidoItemData(BaseModel):
     productId:   int
     productName: str
@@ -77,16 +113,12 @@ class PedidoItemData(BaseModel):
     unitPrice:   float
     subtotal:    float
 
-
-# ── Schema de stock restaurado en cancelación ─────────────────
 class StockRestoradoData(BaseModel):
     productId:        int
     productName:      str
     quantityRestored: int
     currentStock:     int
 
-
-# ── Schema de datos del pedido (crear) ───────────────────────
 class PedidoData(BaseModel):
     orderId:    int
     userId:     int
@@ -96,8 +128,6 @@ class PedidoData(BaseModel):
     createdAt:  str
     items:      List[PedidoItemData]
 
-
-# ── Schema de datos del pedido (detalle) ─────────────────────
 class PedidoDetalleData(BaseModel):
     orderId:         int
     userId:          int
@@ -108,16 +138,18 @@ class PedidoDetalleData(BaseModel):
     items:           List[PedidoItemData]
     createdAt:       str
 
-
-# ── Schema de datos de cancelación ───────────────────────────
 class PedidoCancelData(BaseModel):
     orderId:       int
     status:        str
     cancelledAt:   str
     stockRestored: List[StockRestoradoData]
 
+class PedidoStatusData(BaseModel):
+    orderId:        int
+    previousStatus: str
+    newStatus:      str
+    updatedAt:      str
 
-# ── Schema de SALIDA: Respuesta estándar ─────────────────────
 class PedidoResponse(BaseModel):
     success:    bool
     statusCode: int
@@ -161,6 +193,7 @@ class Pedido:
         self.status           = "pending"
         self.createdAt        = str(date.today())
         self.cancelledAt      = None
+        self.updatedAt        = None
         self.payment_id       = order_id * 10 + 5
         self.payment_status   = "approved"
 
@@ -169,11 +202,27 @@ class Pedido:
         return sum(item.subtotal for item in self.items)
 
     def cancelar(self) -> None:
-        """Regla de dominio: solo pedidos pending pueden cancelarse."""
         if self.status != "pending":
             raise OrderNotCancellableException(self.status)
         self.status      = "cancelled"
         self.cancelledAt = str(date.today())
+
+    def actualizar_estado(self, new_status: str) -> str:
+        """
+        Regla de dominio: valida la transición y actualiza el estado.
+        Retorna el estado anterior.
+        """
+        if self.status in ESTADOS_NO_ACTUALIZABLES:
+            raise OrderNotUpdatableException(self.status)
+
+        estado_esperado = TRANSICIONES_VALIDAS.get(self.status)
+        if new_status != estado_esperado:
+            raise InvalidStatusTransitionException(self.status, new_status)
+
+        previous = self.status
+        self.status    = new_status
+        self.updatedAt = str(date.today())
+        return previous
 
     def marcar_fallido(self):
         self.status         = "failed"
@@ -192,15 +241,13 @@ class Pedido:
 
     def to_detalle(self) -> dict:
         return {
-            "orderId":  self.order_id,
-            "userId":   self.user_id,
-            "status":   self.status,
-            "total":    self.total,
-            "payment":  {
-                "paymentId": self.payment_id,
-                "status":    self.payment_status,
-            },
+            "orderId":         self.order_id,
+            "userId":          self.user_id,
+            "status":          self.status,
+            "total":           self.total,
+            "payment":         {"paymentId": self.payment_id,
+                                "status":    self.payment_status},
             "shippingAddress": self.shipping_address,
-            "items":    [item.to_response() for item in self.items],
-            "createdAt": self.createdAt,
+            "items":           [item.to_response() for item in self.items],
+            "createdAt":       self.createdAt,
         }
