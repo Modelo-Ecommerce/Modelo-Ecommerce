@@ -9,6 +9,7 @@ from app.api.authApi import router as auth_router
 from app.api.productoApi import router as producto_router
 from app.api.carritoApi import router as carrito_router
 from app.api.pedidoApi import router as pedido_router
+from app.api.pagoApi import router as pago_router
 
 app = FastAPI(
     title="Modelo Ecommerce API",
@@ -21,8 +22,8 @@ app.include_router(auth_router)
 app.include_router(producto_router)
 app.include_router(carrito_router)
 app.include_router(pedido_router)
+app.include_router(pago_router)
 
-# ── Botón Authorize en Swagger ────────────────────────────────
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
