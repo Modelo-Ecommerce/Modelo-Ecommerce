@@ -4,6 +4,7 @@
 # Aquí NO hay lógica de negocio.
 # HU-009: Crear pedido
 # HU-010: Consultar pedido
+# HU-011: Cancelar pedido
 # ─────────────────────────────────────────────────────────────
 
 from fastapi import APIRouter, HTTPException, status, Header
@@ -11,7 +12,7 @@ from typing import Optional
 from app.domain.pedidoDomain import (
     PedidoCreate, PedidoResponse,
     MinimumOrderAmountException, MinimumQuantityException,
-    PaymentGatewayException
+    PaymentGatewayException, OrderNotCancellableException
 )
 from app.domain.carritoDomain import InsufficientStockException
 from app.services.dependencies import order_service as service
@@ -105,6 +106,37 @@ def obtener_pedido(id: int,
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
             detail={"success": False, "statusCode": 403, "message": str(e),
                     "error": {"error_code": "FORBIDDEN"}})
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+            detail={"success": False, "statusCode": 404,
+                    "message": "Pedido no encontrado.",
+                    "error": {"error_code": "ORDER_NOT_FOUND",
+                              "details": str(e), "timestamp": "2026-03-17"}})
+
+
+# ── DELETE /api/v1/orders/{id} — Cancelar pedido ─────────────
+@router.delete("/{id}", response_model=PedidoResponse,
+               status_code=status.HTTP_200_OK)
+def cancelar_pedido(id: int,
+                    authorization: Optional[str] = Header(None)):
+    """Cancela un pedido en estado pending. Requiere JWT."""
+    usuario_actual = get_usuario_token(authorization)
+    try:
+        return service.cancelar_pedido(
+            order_id         = id,
+            usuario_token_id = usuario_actual["id"],
+            usuario_role     = usuario_actual["role"],
+        )
+    except PermissionError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+            detail={"success": False, "statusCode": 403, "message": str(e),
+                    "error": {"error_code": "FORBIDDEN"}})
+    except OrderNotCancellableException as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+            detail={"success": False, "statusCode": 409,
+                    "message": "El pedido no puede ser cancelado en su estado actual.",
+                    "error": {"error_code": "ORDER_NOT_CANCELLABLE",
+                              "details": str(e), "timestamp": "2026-03-17"}})
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
             detail={"success": False, "statusCode": 404,

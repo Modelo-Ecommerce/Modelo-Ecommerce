@@ -8,8 +8,8 @@ from typing import Optional, Any, List
 from datetime import date
 
 # ── Reglas de dominio ─────────────────────────────────────────
-MIN_ORDER_AMOUNT  = 60_000  # $60.000 COP
-MIN_CART_QUANTITY = 3       # mínimo de unidades totales
+MIN_ORDER_AMOUNT  = 60_000
+MIN_CART_QUANTITY = 3
 
 
 # ── Excepciones de dominio ────────────────────────────────────
@@ -19,18 +19,23 @@ class MinimumOrderAmountException(ValueError):
             "El valor mínimo de un pedido es $60.000 COP (MIN_ORDER_AMOUNT)."
         )
 
-
 class MinimumQuantityException(ValueError):
     def __init__(self):
         super().__init__(
             f"El carrito debe tener al menos {MIN_CART_QUANTITY} unidades totales."
         )
 
-
 class PaymentGatewayException(Exception):
     def __init__(self):
         super().__init__(
             "Error al procesar el pago con la pasarela. Intente nuevamente."
+        )
+
+class OrderNotCancellableException(ValueError):
+    def __init__(self, current_status: str):
+        super().__init__(
+            f"Solo los pedidos en estado pending pueden cancelarse. "
+            f"Estado actual: {current_status}."
         )
 
 
@@ -58,19 +63,27 @@ class PedidoCreate(BaseModel):
         return v
 
 
-# ── Schema de datos del pago en la respuesta ─────────────────
+# ── Schema de datos del pago ──────────────────────────────────
 class PagoData(BaseModel):
     paymentId: int
     status:    str
 
 
-# ── Schema de datos de un ítem en el pedido ──────────────────
+# ── Schema de datos de un ítem del pedido ────────────────────
 class PedidoItemData(BaseModel):
     productId:   int
     productName: str
     quantity:    int
     unitPrice:   float
     subtotal:    float
+
+
+# ── Schema de stock restaurado en cancelación ─────────────────
+class StockRestoradoData(BaseModel):
+    productId:        int
+    productName:      str
+    quantityRestored: int
+    currentStock:     int
 
 
 # ── Schema de datos del pedido (crear) ───────────────────────
@@ -84,7 +97,7 @@ class PedidoData(BaseModel):
     items:      List[PedidoItemData]
 
 
-# ── Schema de datos del pedido (detalle HU-010) ───────────────
+# ── Schema de datos del pedido (detalle) ─────────────────────
 class PedidoDetalleData(BaseModel):
     orderId:         int
     userId:          int
@@ -94,6 +107,14 @@ class PedidoDetalleData(BaseModel):
     shippingAddress: DireccionEnvio
     items:           List[PedidoItemData]
     createdAt:       str
+
+
+# ── Schema de datos de cancelación ───────────────────────────
+class PedidoCancelData(BaseModel):
+    orderId:       int
+    status:        str
+    cancelledAt:   str
+    stockRestored: List[StockRestoradoData]
 
 
 # ── Schema de SALIDA: Respuesta estándar ─────────────────────
@@ -132,20 +153,27 @@ class Pedido:
     def __init__(self, order_id: int, user_id: int,
                  items: list, payment_url: str,
                  shipping_address: dict = None):
-        self.order_id        = order_id
-        self.user_id         = user_id
-        self.items           = items
-        self.payment_url     = payment_url
+        self.order_id         = order_id
+        self.user_id          = user_id
+        self.items            = items
+        self.payment_url      = payment_url
         self.shipping_address = shipping_address or {}
-        self.status          = "pending"
-        self.createdAt       = str(date.today())
-        # Pago simulado
-        self.payment_id      = order_id * 10 + 5
-        self.payment_status  = "approved"
+        self.status           = "pending"
+        self.createdAt        = str(date.today())
+        self.cancelledAt      = None
+        self.payment_id       = order_id * 10 + 5
+        self.payment_status   = "approved"
 
     @property
     def total(self) -> float:
         return sum(item.subtotal for item in self.items)
+
+    def cancelar(self) -> None:
+        """Regla de dominio: solo pedidos pending pueden cancelarse."""
+        if self.status != "pending":
+            raise OrderNotCancellableException(self.status)
+        self.status      = "cancelled"
+        self.cancelledAt = str(date.today())
 
     def marcar_fallido(self):
         self.status         = "failed"
