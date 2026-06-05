@@ -5,11 +5,14 @@
 # ─────────────────────────────────────────────────────────────
 
 from app.domain.pedidoDomain import (
-    PedidoCreate, PedidoResponse, PedidoData, PedidoItemData,
-    PedidoDetalleData, PagoData, DireccionEnvio,
-    PedidoItem, Pedido,
+    PedidoCreate, PedidoStatusUpdate, PedidoResponse,
+    PedidoData, PedidoItemData, PedidoDetalleData,
+    PedidoCancelData, PedidoStatusData, StockRestoradoData,
+    PagoData, DireccionEnvio, PedidoItem, Pedido,
     MinimumOrderAmountException, MinimumQuantityException,
-    PaymentGatewayException, MIN_ORDER_AMOUNT
+    PaymentGatewayException, OrderNotCancellableException,
+    InvalidStatusTransitionException, OrderNotUpdatableException,
+    MIN_ORDER_AMOUNT
 )
 from app.domain.carritoDomain import InsufficientStockException
 from app.repositories.pedidoRepository import PedidoRepository
@@ -42,22 +45,21 @@ class OrderService:
         self.producto_repo   = producto_repo
         self.payment_service = payment_service
 
+    def _items_a_data(self, items) -> list:
+        return [PedidoItemData(**i.to_response()) for i in items]
+
     # ── HU-009: POST /api/v1/orders ──────────────────────────
     def crear_pedido(self, datos: PedidoCreate,
                      usuario_token_id: int) -> PedidoResponse:
-
         if datos.userId != usuario_token_id:
             raise PermissionError(
                 "No puedes crear un pedido en nombre de otro usuario."
             )
-
         carrito = self.carrito_repo.obtener_por_usuario(datos.userId)
         if not carrito or carrito.cart_id != datos.cartId:
             raise ValueError("El carrito no existe o no pertenece al usuario.")
-
         if not carrito.cumple_minimo():
             raise MinimumQuantityException()
-
         if carrito.total < MIN_ORDER_AMOUNT:
             raise MinimumOrderAmountException()
 
@@ -83,25 +85,21 @@ class OrderService:
                 for item in carrito.items.values()
             ]
 
-            # Guardar dirección de envío en el pedido
-            shipping = datos.shippingAddress.model_dump()
-
             pedido = Pedido(
                 order_id         = 0,
                 user_id          = datos.userId,
                 items            = items_pedido,
                 payment_url      = "",
-                shipping_address = shipping,
+                shipping_address = datos.shippingAddress.model_dump(),
             )
             pedido = self.pedido_repo.crear(pedido)
 
             try:
-                payment_url = self.payment_service.procesar_pago(
+                pedido.payment_url = self.payment_service.procesar_pago(
                     order_id       = pedido.order_id,
                     total          = pedido.total,
                     payment_method = datos.paymentMethod,
                 )
-                pedido.payment_url = payment_url
             except Exception:
                 for producto, qty in stock_reducido:
                     producto.stock += qty
@@ -124,11 +122,9 @@ class OrderService:
                     total      = pedido.total,
                     paymentUrl = pedido.payment_url,
                     createdAt  = pedido.createdAt,
-                    items      = [PedidoItemData(**i.to_response())
-                                  for i in pedido.items],
+                    items      = self._items_a_data(pedido.items),
                 )
             )
-
         except (MinimumOrderAmountException, MinimumQuantityException,
                 PermissionError, ValueError, PaymentGatewayException):
             raise
@@ -141,17 +137,11 @@ class OrderService:
     def obtener_pedido(self, order_id: int,
                        usuario_token_id: int,
                        usuario_role: str) -> PedidoResponse:
-
         pedido = self.pedido_repo.obtener_por_id(order_id)
         if not pedido:
             raise ValueError(f"El pedido con id {order_id} no existe en el sistema.")
-
-        # Regla de negocio: cliente solo ve sus propios pedidos
         if usuario_role == "client" and pedido.user_id != usuario_token_id:
-            raise PermissionError(
-                "No tienes permiso para ver este pedido."
-            )
-
+            raise PermissionError("No tienes permiso para ver este pedido.")
         return PedidoResponse(
             success    = True,
             statusCode = 200,
@@ -165,11 +155,78 @@ class OrderService:
                     paymentId = pedido.payment_id,
                     status    = pedido.payment_status,
                 ),
-                shippingAddress = DireccionEnvio(
-                    **pedido.shipping_address
-                ),
-                items           = [PedidoItemData(**i.to_response())
-                                   for i in pedido.items],
+                shippingAddress = DireccionEnvio(**pedido.shipping_address),
+                items           = self._items_a_data(pedido.items),
                 createdAt       = pedido.createdAt,
+            )
+        )
+
+    # ── HU-011: DELETE /api/v1/orders/{id} ───────────────────
+    def cancelar_pedido(self, order_id: int,
+                        usuario_token_id: int,
+                        usuario_role: str) -> PedidoResponse:
+        pedido = self.pedido_repo.obtener_por_id(order_id)
+        if not pedido:
+            raise ValueError(f"El pedido con id {order_id} no existe en el sistema.")
+        if usuario_role == "client" and pedido.user_id != usuario_token_id:
+            raise PermissionError("No tienes permiso para cancelar este pedido.")
+
+        pedido.cancelar()
+
+        stock_restaurado = []
+        for item in pedido.items:
+            producto = self.producto_repo.obtener_por_id(item.product_id)
+            if producto:
+                producto.stock += item.quantity
+                stock_restaurado.append(
+                    StockRestoradoData(
+                        productId        = item.product_id,
+                        productName      = item.product_name,
+                        quantityRestored = item.quantity,
+                        currentStock     = producto.stock,
+                    )
+                )
+        self.pedido_repo.guardar(pedido)
+        return PedidoResponse(
+            success    = True,
+            statusCode = 200,
+            message    = "Pedido cancelado correctamente.",
+            data       = PedidoCancelData(
+                orderId       = pedido.order_id,
+                status        = pedido.status,
+                cancelledAt   = pedido.cancelledAt,
+                stockRestored = stock_restaurado,
+            )
+        )
+
+    # ── HU-012: PATCH /api/v1/orders/{id} ────────────────────
+    def actualizar_estado(self, order_id: int,
+                          datos: PedidoStatusUpdate,
+                          usuario_role: str) -> PedidoResponse:
+
+        # Regla de negocio: solo admin
+        if usuario_role != "admin":
+            raise PermissionError(
+                "Solo un administrador puede actualizar el estado del pedido."
+            )
+
+        # Regla de negocio: pedido debe existir
+        pedido = self.pedido_repo.obtener_por_id(order_id)
+        if not pedido:
+            raise ValueError(f"El pedido con id {order_id} no existe en el sistema.")
+
+        # Regla de dominio: transición válida
+        previous_status = pedido.actualizar_estado(datos.status)
+        self.pedido_repo.guardar(pedido)
+
+        return PedidoResponse(
+            success    = True,
+            statusCode = 200,
+            message    = "Estado del pedido actualizado correctamente.",
+            data       = PedidoStatusData(
+                orderId        = pedido.order_id,
+                previousStatus = previous_status,
+                newStatus      = pedido.status,
+                updatedAt      = pedido.updatedAt,
             )
         )
