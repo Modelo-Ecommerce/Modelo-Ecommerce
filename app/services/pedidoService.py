@@ -6,10 +6,11 @@
 
 from app.domain.pedidoDomain import (
     PedidoCreate, PedidoResponse, PedidoData, PedidoItemData,
-    PedidoDetalleData, PagoData, DireccionEnvio,
-    PedidoItem, Pedido,
+    PedidoDetalleData, PedidoCancelData, StockRestoradoData,
+    PagoData, DireccionEnvio, PedidoItem, Pedido,
     MinimumOrderAmountException, MinimumQuantityException,
-    PaymentGatewayException, MIN_ORDER_AMOUNT
+    PaymentGatewayException, OrderNotCancellableException,
+    MIN_ORDER_AMOUNT
 )
 from app.domain.carritoDomain import InsufficientStockException
 from app.repositories.pedidoRepository import PedidoRepository
@@ -45,19 +46,15 @@ class OrderService:
     # ── HU-009: POST /api/v1/orders ──────────────────────────
     def crear_pedido(self, datos: PedidoCreate,
                      usuario_token_id: int) -> PedidoResponse:
-
         if datos.userId != usuario_token_id:
             raise PermissionError(
                 "No puedes crear un pedido en nombre de otro usuario."
             )
-
         carrito = self.carrito_repo.obtener_por_usuario(datos.userId)
         if not carrito or carrito.cart_id != datos.cartId:
             raise ValueError("El carrito no existe o no pertenece al usuario.")
-
         if not carrito.cumple_minimo():
             raise MinimumQuantityException()
-
         if carrito.total < MIN_ORDER_AMOUNT:
             raise MinimumOrderAmountException()
 
@@ -83,9 +80,7 @@ class OrderService:
                 for item in carrito.items.values()
             ]
 
-            # Guardar dirección de envío en el pedido
             shipping = datos.shippingAddress.model_dump()
-
             pedido = Pedido(
                 order_id         = 0,
                 user_id          = datos.userId,
@@ -141,16 +136,11 @@ class OrderService:
     def obtener_pedido(self, order_id: int,
                        usuario_token_id: int,
                        usuario_role: str) -> PedidoResponse:
-
         pedido = self.pedido_repo.obtener_por_id(order_id)
         if not pedido:
             raise ValueError(f"El pedido con id {order_id} no existe en el sistema.")
-
-        # Regla de negocio: cliente solo ve sus propios pedidos
         if usuario_role == "client" and pedido.user_id != usuario_token_id:
-            raise PermissionError(
-                "No tienes permiso para ver este pedido."
-            )
+            raise PermissionError("No tienes permiso para ver este pedido.")
 
         return PedidoResponse(
             success    = True,
@@ -165,11 +155,57 @@ class OrderService:
                     paymentId = pedido.payment_id,
                     status    = pedido.payment_status,
                 ),
-                shippingAddress = DireccionEnvio(
-                    **pedido.shipping_address
-                ),
+                shippingAddress = DireccionEnvio(**pedido.shipping_address),
                 items           = [PedidoItemData(**i.to_response())
                                    for i in pedido.items],
                 createdAt       = pedido.createdAt,
+            )
+        )
+
+    # ── HU-011: DELETE /api/v1/orders/{id} ───────────────────
+    def cancelar_pedido(self, order_id: int,
+                        usuario_token_id: int,
+                        usuario_role: str) -> PedidoResponse:
+
+        # Regla de negocio: pedido debe existir
+        pedido = self.pedido_repo.obtener_por_id(order_id)
+        if not pedido:
+            raise ValueError(f"El pedido con id {order_id} no existe en el sistema.")
+
+        # Regla de negocio: cliente solo cancela sus propios pedidos
+        if usuario_role == "client" and pedido.user_id != usuario_token_id:
+            raise PermissionError(
+                "No tienes permiso para cancelar este pedido."
+            )
+
+        # Regla de dominio: solo pedidos pending pueden cancelarse
+        pedido.cancelar()  # lanza OrderNotCancellableException si no es pending
+
+        # Restaurar stock de todos los productos vía InventoryService
+        stock_restaurado = []
+        for item in pedido.items:
+            producto = self.producto_repo.obtener_por_id(item.product_id)
+            if producto:
+                producto.stock += item.quantity
+                stock_restaurado.append(
+                    StockRestoradoData(
+                        productId        = item.product_id,
+                        productName      = item.product_name,
+                        quantityRestored = item.quantity,
+                        currentStock     = producto.stock,
+                    )
+                )
+
+        self.pedido_repo.guardar(pedido)
+
+        return PedidoResponse(
+            success    = True,
+            statusCode = 200,
+            message    = "Pedido cancelado correctamente.",
+            data       = PedidoCancelData(
+                orderId       = pedido.order_id,
+                status        = pedido.status,
+                cancelledAt   = pedido.cancelledAt,
+                stockRestored = stock_restaurado,
             )
         )
