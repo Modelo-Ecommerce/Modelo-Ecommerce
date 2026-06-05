@@ -6,9 +6,10 @@
 
 from app.domain.pedidoDomain import (
     PedidoCreate, PedidoResponse, PedidoData, PedidoItemData,
+    PedidoDetalleData, PagoData, DireccionEnvio,
     PedidoItem, Pedido,
     MinimumOrderAmountException, MinimumQuantityException,
-    PaymentGatewayException, MIN_ORDER_AMOUNT, MIN_CART_QUANTITY
+    PaymentGatewayException, MIN_ORDER_AMOUNT
 )
 from app.domain.carritoDomain import InsufficientStockException
 from app.repositories.pedidoRepository import PedidoRepository
@@ -17,17 +18,9 @@ from app.repositories.productoRepository import ProductoRepository
 
 
 class PaymentService:
-    """
-    Servicio de pago — simula integración con Wompi.
-    En producción llamaría a la API real de Wompi.
-    """
+    """Simula integración con Wompi."""
     def procesar_pago(self, order_id: int, total: float,
                       payment_method: str) -> str:
-        """
-        Simula el inicio del pago y retorna la URL de checkout.
-        Lanza PaymentGatewayException si falla.
-        """
-        # Simulación: siempre exitoso en desarrollo
         return (
             f"https://checkout.wompi.co/p/"
             f"?public-key=pub_test_demo"
@@ -53,26 +46,21 @@ class OrderService:
     def crear_pedido(self, datos: PedidoCreate,
                      usuario_token_id: int) -> PedidoResponse:
 
-        # Regla de negocio: userId debe coincidir con el token
         if datos.userId != usuario_token_id:
             raise PermissionError(
                 "No puedes crear un pedido en nombre de otro usuario."
             )
 
-        # Obtener el carrito
         carrito = self.carrito_repo.obtener_por_usuario(datos.userId)
         if not carrito or carrito.cart_id != datos.cartId:
             raise ValueError("El carrito no existe o no pertenece al usuario.")
 
-        # Regla de dominio: mínimo de unidades
         if not carrito.cumple_minimo():
             raise MinimumQuantityException()
 
-        # Regla de dominio: monto mínimo
         if carrito.total < MIN_ORDER_AMOUNT:
             raise MinimumOrderAmountException()
 
-        # Verificar stock de todos los productos
         stock_reducido = []
         try:
             for item in carrito.items.values():
@@ -82,11 +70,9 @@ class OrderService:
                         item.product_name,
                         producto.stock if producto else 0
                     )
-                # Descontar stock
                 producto.stock -= item.quantity
                 stock_reducido.append((producto, item.quantity))
 
-            # Crear ítems del pedido
             items_pedido = [
                 PedidoItem(
                     product_id   = item.product_id,
@@ -97,16 +83,18 @@ class OrderService:
                 for item in carrito.items.values()
             ]
 
-            # Crear el pedido con id temporal
+            # Guardar dirección de envío en el pedido
+            shipping = datos.shippingAddress.model_dump()
+
             pedido = Pedido(
-                order_id    = 0,
-                user_id     = datos.userId,
-                items       = items_pedido,
-                payment_url = "",
+                order_id         = 0,
+                user_id          = datos.userId,
+                items            = items_pedido,
+                payment_url      = "",
+                shipping_address = shipping,
             )
             pedido = self.pedido_repo.crear(pedido)
 
-            # Iniciar pago vía PaymentService
             try:
                 payment_url = self.payment_service.procesar_pago(
                     order_id       = pedido.order_id,
@@ -115,14 +103,12 @@ class OrderService:
                 )
                 pedido.payment_url = payment_url
             except Exception:
-                # Revertir stock y marcar pedido como fallido
                 for producto, qty in stock_reducido:
                     producto.stock += qty
                 pedido.marcar_fallido()
                 self.pedido_repo.guardar(pedido)
                 raise PaymentGatewayException()
 
-            # Vaciar carrito automáticamente
             carrito.vaciar()
             self.carrito_repo.guardar(carrito)
             self.pedido_repo.guardar(pedido)
@@ -145,11 +131,45 @@ class OrderService:
 
         except (MinimumOrderAmountException, MinimumQuantityException,
                 PermissionError, ValueError, PaymentGatewayException):
-            # Re-lanzar excepciones de dominio sin revertir stock
-            # (el stock solo se revierte si ya fue descontado)
             raise
         except InsufficientStockException:
-            # Revertir stock parcialmente descontado
             for producto, qty in stock_reducido:
                 producto.stock += qty
             raise
+
+    # ── HU-010: GET /api/v1/orders/{id} ──────────────────────
+    def obtener_pedido(self, order_id: int,
+                       usuario_token_id: int,
+                       usuario_role: str) -> PedidoResponse:
+
+        pedido = self.pedido_repo.obtener_por_id(order_id)
+        if not pedido:
+            raise ValueError(f"El pedido con id {order_id} no existe en el sistema.")
+
+        # Regla de negocio: cliente solo ve sus propios pedidos
+        if usuario_role == "client" and pedido.user_id != usuario_token_id:
+            raise PermissionError(
+                "No tienes permiso para ver este pedido."
+            )
+
+        return PedidoResponse(
+            success    = True,
+            statusCode = 200,
+            message    = "Pedido encontrado.",
+            data       = PedidoDetalleData(
+                orderId         = pedido.order_id,
+                userId          = pedido.user_id,
+                status          = pedido.status,
+                total           = pedido.total,
+                payment         = PagoData(
+                    paymentId = pedido.payment_id,
+                    status    = pedido.payment_status,
+                ),
+                shippingAddress = DireccionEnvio(
+                    **pedido.shipping_address
+                ),
+                items           = [PedidoItemData(**i.to_response())
+                                   for i in pedido.items],
+                createdAt       = pedido.createdAt,
+            )
+        )

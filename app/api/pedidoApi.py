@@ -3,6 +3,7 @@
 # Solo recibe peticiones y llama al servicio.
 # Aquí NO hay lógica de negocio.
 # HU-009: Crear pedido
+# HU-010: Consultar pedido
 # ─────────────────────────────────────────────────────────────
 
 from fastapi import APIRouter, HTTPException, status, Header
@@ -54,72 +55,59 @@ def crear_pedido(datos: PedidoCreate,
     try:
         return service.crear_pedido(datos, usuario_actual["id"])
     except PermissionError as e:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "success": False, "statusCode": 403,
-                "message": str(e),
-                "error": {"error_code": "FORBIDDEN"}
-            }
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+            detail={"success": False, "statusCode": 403, "message": str(e),
+                    "error": {"error_code": "FORBIDDEN"}})
     except MinimumOrderAmountException as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={
-                "success": False, "statusCode": 422,
-                "message": "El valor del pedido no cumple el mínimo requerido.",
-                "error": {
-                    "error_code": "MINIMUM_ORDER_AMOUNT",
-                    "details": str(e),
-                    "timestamp": "2026-03-17"
-                }
-            }
-        )
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"success": False, "statusCode": 422,
+                    "message": "El valor del pedido no cumple el mínimo requerido.",
+                    "error": {"error_code": "MINIMUM_ORDER_AMOUNT",
+                              "details": str(e), "timestamp": "2026-03-17"}})
     except MinimumQuantityException as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={
-                "success": False, "statusCode": 422,
-                "message": "El carrito no cumple la cantidad mínima requerida.",
-                "error": {
-                    "error_code": "MINIMUM_QUANTITY",
-                    "details": str(e),
-                    "timestamp": "2026-03-17"
-                }
-            }
-        )
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"success": False, "statusCode": 422,
+                    "message": "El carrito no cumple la cantidad mínima requerida.",
+                    "error": {"error_code": "MINIMUM_QUANTITY",
+                              "details": str(e), "timestamp": "2026-03-17"}})
     except InsufficientStockException as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={
-                "success": False, "statusCode": 422,
-                "message": "Stock insuficiente para uno o más productos.",
-                "error": {
-                    "error_code": "INSUFFICIENT_STOCK",
-                    "details": str(e),
-                    "timestamp": "2026-03-17"
-                }
-            }
-        )
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"success": False, "statusCode": 422,
+                    "message": "Stock insuficiente para uno o más productos.",
+                    "error": {"error_code": "INSUFFICIENT_STOCK",
+                              "details": str(e), "timestamp": "2026-03-17"}})
     except PaymentGatewayException as e:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail={
-                "success": False, "statusCode": 502,
-                "message": "Error al procesar el pago. El pedido fue revertido.",
-                "error": {
-                    "error_code": "PAYMENT_GATEWAY_ERROR",
-                    "details": str(e),
-                    "timestamp": "2026-03-17"
-                }
-            }
-        )
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={"success": False, "statusCode": 502,
+                    "message": "Error al procesar el pago. El pedido fue revertido.",
+                    "error": {"error_code": "PAYMENT_GATEWAY_ERROR",
+                              "details": str(e), "timestamp": "2026-03-17"}})
     except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "success": False, "statusCode": 404,
-                "message": str(e),
-                "error": {"error_code": "NOT_FOUND"}
-            }
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+            detail={"success": False, "statusCode": 404, "message": str(e),
+                    "error": {"error_code": "NOT_FOUND"}})
+
+
+# ── GET /api/v1/orders/{id} — Consultar pedido ───────────────
+@router.get("/{id}", response_model=PedidoResponse,
+            status_code=status.HTTP_200_OK)
+def obtener_pedido(id: int,
+                   authorization: Optional[str] = Header(None)):
+    """Consulta el detalle de un pedido. Requiere JWT."""
+    usuario_actual = get_usuario_token(authorization)
+    try:
+        return service.obtener_pedido(
+            order_id         = id,
+            usuario_token_id = usuario_actual["id"],
+            usuario_role     = usuario_actual["role"],
         )
+    except PermissionError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+            detail={"success": False, "statusCode": 403, "message": str(e),
+                    "error": {"error_code": "FORBIDDEN"}})
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+            detail={"success": False, "statusCode": 404,
+                    "message": "Pedido no encontrado.",
+                    "error": {"error_code": "ORDER_NOT_FOUND",
+                              "details": str(e), "timestamp": "2026-03-17"}})
