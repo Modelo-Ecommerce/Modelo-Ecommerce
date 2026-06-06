@@ -3,6 +3,7 @@
 # Solo recibe peticiones y llama al servicio.
 # Aquí NO hay lógica de negocio.
 # HU-013: Iniciar proceso de pago
+# HU-014: Consultar estado del pago
 # ─────────────────────────────────────────────────────────────
 
 from fastapi import APIRouter, HTTPException, status, Header
@@ -83,13 +84,18 @@ def obtener_pago(id: int,
     """Consulta el estado de un pago. Requiere JWT."""
     usuario_actual = get_usuario_token(authorization)
     try:
-        return service.obtener_pago(id, usuario_actual["id"],
-                                    usuario_actual["role"])
+        return service.obtener_pago(
+            payment_id       = id,
+            usuario_token_id = usuario_actual["id"],
+            usuario_role     = usuario_actual["role"],
+        )
     except PermissionError as e:
         raise HTTPException(status_code=403,
             detail={"success": False, "statusCode": 403, "message": str(e),
                     "error": {"error_code": "FORBIDDEN"}})
     except ValueError as e:
         raise HTTPException(status_code=404,
-            detail={"success": False, "statusCode": 404, "message": str(e),
-                    "error": {"error_code": "PAYMENT_NOT_FOUND"}})
+            detail={"success": False, "statusCode": 404,
+                    "message": "Pago no encontrado.",
+                    "error": {"error_code": "PAYMENT_NOT_FOUND",
+                              "details": str(e), "timestamp": "2026-03-17"}})
