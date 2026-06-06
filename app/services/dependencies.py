@@ -19,6 +19,8 @@ from app.services.pedidoService import OrderService, PaymentService as OrderPaym
 from app.repositories.pagoRepository import pago_repository
 from app.services.pagoService import PaymentService, WompiService
 
+from app.services.inventarioService import InventarioService
+
 # ── Usuarios ──────────────────────────────────────────────────
 usuario_service = UsuarioService(repo=usuario_repository)
 
@@ -49,7 +51,11 @@ order_service         = OrderService(
 # ── Pagos ─────────────────────────────────────────────────────
 wompi_service   = WompiService()
 payment_service = PaymentService(
-    pago_repo    = pago_repository,
-    pedido_repo  = pedido_repository,
+    pago_repo     = pago_repository,
+    pedido_repo   = pedido_repository,
+    producto_repo = producto_repository,
     wompi_service = wompi_service,
 )
+
+# ── Inventario ────────────────────────────────────────────────
+inventario_service = InventarioService(producto_repo=producto_repository)

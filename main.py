@@ -11,6 +11,7 @@ from app.api.productoApi import router as producto_router
 from app.api.carritoApi import router as carrito_router
 from app.api.pedidoApi import router as pedido_router
 from app.api.pagoApi import router as pago_router
+from app.api.inventarioApi import router as inventario_router
 from app.repositories.usuarioRepository import usuario_repository
 
 app = FastAPI(
@@ -19,7 +20,7 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# ── Rutas públicas — no requieren autenticación ───────────────
+# ── Rutas públicas ────────────────────────────────────────────
 RUTAS_PUBLICAS = {
     "/",
     "/docs",
@@ -28,15 +29,13 @@ RUTAS_PUBLICAS = {
     "/api/v1/users/",
     "/api/v1/users/register",
     "/api/v1/auth/login",
+    "/api/v1/payments/webhook",
 }
 
 
-# ── Middleware: valida que el usuario del token exista ────────
 @app.middleware("http")
 async def validar_usuario_token(request: Request, call_next):
     path = request.url.path
-
-    # Saltar rutas públicas y GET del catálogo de productos
     if (path in RUTAS_PUBLICAS or
         path.startswith("/docs") or
         path.startswith("/openapi") or
@@ -44,21 +43,18 @@ async def validar_usuario_token(request: Request, call_next):
         (request.method == "GET" and path.startswith("/api/v1/products"))):
         return await call_next(request)
 
-    # Leer el header Authorization
     authorization = request.headers.get("authorization") or \
                     request.headers.get("Authorization")
-
     if not authorization or not authorization.startswith("Bearer "):
-        return await call_next(request)  # lo maneja el endpoint
+        return await call_next(request)
 
     token = authorization.replace("Bearer ", "").strip()
     try:
         user_id_str, role = token.split(":")
         user_id = int(user_id_str)
     except Exception:
-        return await call_next(request)  # lo maneja el endpoint
+        return await call_next(request)
 
-    # ── Validación clave: el usuario debe existir ─────────────
     usuario = usuario_repository.obtener_por_id(user_id)
     if not usuario:
         return JSONResponse(
@@ -66,25 +62,22 @@ async def validar_usuario_token(request: Request, call_next):
             content={
                 "success":    False,
                 "statusCode": 401,
-                "message":    "El usuario del token no existe en el sistema. "
-                              "Por favor regístrate o inicia sesión.",
+                "message":    "El usuario del token no existe. Regístrate primero.",
                 "error":      {"error_code": "USER_NOT_FOUND_IN_TOKEN"}
             }
         )
-
     return await call_next(request)
 
 
-# Registrar routers
 app.include_router(usuario_router)
 app.include_router(auth_router)
 app.include_router(producto_router)
 app.include_router(carrito_router)
 app.include_router(pedido_router)
 app.include_router(pago_router)
+app.include_router(inventario_router)
 
 
-# ── Botón Authorize en Swagger ────────────────────────────────
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
