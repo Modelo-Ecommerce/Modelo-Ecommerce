@@ -5,7 +5,7 @@
 
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional, Any
-from datetime import date
+from datetime import date, datetime
 
 
 # ── Excepciones de dominio ────────────────────────────────────
@@ -16,13 +16,9 @@ class PaymentAmountMismatchException(ValueError):
             f"es ${order_total:,.0f}."
         )
 
-
 class PaymentAlreadyApprovedException(ValueError):
     def __init__(self):
-        super().__init__(
-            "El pedido ya tiene un pago aprobado."
-        )
-
+        super().__init__("El pedido ya tiene un pago aprobado.")
 
 class PaymentGatewayException(Exception):
     def __init__(self, detail: str = "Error en la pasarela de pago."):
@@ -39,7 +35,7 @@ class MetodoPago(BaseModel):
     def tipo_valido(cls, v):
         tipos = {"CARD", "PSE", "NEQUI"}
         if v.upper() not in tipos:
-            raise ValueError(f"Tipo de pago inválido. Use: {', '.join(tipos)}")
+            raise ValueError(f"Tipo inválido. Use: {', '.join(tipos)}")
         return v.upper()
 
 
@@ -57,18 +53,18 @@ class PagoCreate(BaseModel):
     @classmethod
     def moneda_valida(cls, v):
         if v.upper() != "COP":
-            raise ValueError("Solo se acepta COP como moneda.")
+            raise ValueError("Solo se acepta COP.")
         return v.upper()
 
     @field_validator("customerEmail")
     @classmethod
     def email_valido(cls, v):
         if "@" not in v or "." not in v:
-            raise ValueError("El correo electrónico no es válido.")
+            raise ValueError("El correo no es válido.")
         return v
 
 
-# ── Schema de datos del pago en la respuesta ─────────────────
+# ── Schema de datos del pago — crear (HU-013) ────────────────
 class PagoData(BaseModel):
     paymentId:          int
     orderId:            int
@@ -78,6 +74,19 @@ class PagoData(BaseModel):
     currency:           str
     paymentUrl:         str
     createdAt:          str
+
+
+# ── Schema de datos del pago — detalle (HU-014) ──────────────
+class PagoDetalleData(BaseModel):
+    paymentId:          int
+    orderId:            int
+    wompiTransactionId: str
+    status:             str
+    amount:             float
+    currency:           str
+    paymentMethodType:  str
+    createdAt:          str
+    approvedAt:         Optional[str] = None  # Solo si status == "approved"
 
 
 # ── Schema de SALIDA: Respuesta estándar ─────────────────────
@@ -92,7 +101,8 @@ class PagoResponse(BaseModel):
 class Pago:
     def __init__(self, payment_id: int, order_id: int,
                  user_id: int, amount: float, currency: str,
-                 wompi_transaction_id: str, payment_url: str):
+                 wompi_transaction_id: str, payment_url: str,
+                 payment_method_type: str = "CARD"):
         self.payment_id           = payment_id
         self.order_id             = order_id
         self.user_id              = user_id
@@ -100,14 +110,20 @@ class Pago:
         self.currency             = currency
         self.wompi_transaction_id = wompi_transaction_id
         self.payment_url          = payment_url
+        self.payment_method_type  = payment_method_type
         self.status               = "pending"
         self.createdAt            = str(date.today())
+        self.approvedAt           = None
 
     def aprobar(self) -> None:
-        self.status = "approved"
+        self.status     = "approved"
+        self.approvedAt = datetime.now().isoformat()
 
     def rechazar(self) -> None:
-        self.status = "rejected"
+        self.status = "declined"
+
+    def anular(self) -> None:
+        self.status = "voided"
 
     def to_response(self) -> dict:
         return {
@@ -119,4 +135,17 @@ class Pago:
             "currency":           self.currency,
             "paymentUrl":         self.payment_url,
             "createdAt":          self.createdAt,
+        }
+
+    def to_detalle(self) -> dict:
+        return {
+            "paymentId":          self.payment_id,
+            "orderId":            self.order_id,
+            "wompiTransactionId": self.wompi_transaction_id,
+            "status":             self.status,
+            "amount":             self.amount,
+            "currency":           self.currency,
+            "paymentMethodType":  self.payment_method_type,
+            "createdAt":          self.createdAt,
+            "approvedAt":         self.approvedAt,
         }
