@@ -49,7 +49,8 @@ order_service         = OrderService(
 # ── Pagos ─────────────────────────────────────────────────────
 wompi_service   = WompiService()
 payment_service = PaymentService(
-    pago_repo    = pago_repository,
-    pedido_repo  = pedido_repository,
+    pago_repo     = pago_repository,
+    pedido_repo   = pedido_repository,
+    producto_repo = producto_repository,
     wompi_service = wompi_service,
 )

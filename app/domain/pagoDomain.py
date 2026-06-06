@@ -24,6 +24,10 @@ class PaymentGatewayException(Exception):
     def __init__(self, detail: str = "Error en la pasarela de pago."):
         super().__init__(detail)
 
+class InvalidWebhookSignatureException(Exception):
+    def __init__(self):
+        super().__init__("Firma del webhook inválida. La solicitud no proviene de Wompi.")
+
 
 # ── Schema de ENTRADA: Método de pago ────────────────────────
 class MetodoPago(BaseModel):
@@ -64,7 +68,46 @@ class PagoCreate(BaseModel):
         return v
 
 
-# ── Schema de datos del pago — crear (HU-013) ────────────────
+# ── Schema de ENTRADA: Actualizar estado pago (PATCH) ────────
+class PagoStatusUpdate(BaseModel):
+    status: str = Field(..., description="approved | declined | voided")
+
+    @field_validator("status")
+    @classmethod
+    def estado_valido(cls, v):
+        estados = {"approved", "declined", "voided"}
+        if v not in estados:
+            raise ValueError(f"Estado inválido. Use: {', '.join(estados)}")
+        return v
+
+
+# ── Schema de ENTRADA: Webhook Wompi ─────────────────────────
+class WompiTransaccion(BaseModel):
+    id:                  str   = Field(..., description="wompiTransactionId")
+    status:              str   = Field(..., description="APPROVED | DECLINED | VOIDED")
+    amount_in_cents:     int   = Field(..., description="Monto en centavos")
+    reference:           str   = Field(..., description="orderId del pedido")
+    payment_method_type: str   = Field("CARD")
+
+class WompiData(BaseModel):
+    transaction: WompiTransaccion
+
+class WebhookWompi(BaseModel):
+    event:   str      = Field(..., description="transaction.updated")
+    data:    WompiData
+    sent_at: str      = Field(..., description="Timestamp ISO 8601")
+
+
+# ── Schema de datos del webhook procesado ────────────────────
+class WebhookResultData(BaseModel):
+    paymentId:       int
+    newStatus:       str
+    orderId:         int
+    orderNewStatus:  str
+    stockRestored:   bool
+
+
+# ── Schemas de respuesta ──────────────────────────────────────
 class PagoData(BaseModel):
     paymentId:          int
     orderId:            int
@@ -75,8 +118,6 @@ class PagoData(BaseModel):
     paymentUrl:         str
     createdAt:          str
 
-
-# ── Schema de datos del pago — detalle (HU-014) ──────────────
 class PagoDetalleData(BaseModel):
     paymentId:          int
     orderId:            int
@@ -86,10 +127,8 @@ class PagoDetalleData(BaseModel):
     currency:           str
     paymentMethodType:  str
     createdAt:          str
-    approvedAt:         Optional[str] = None  # Solo si status == "approved"
+    approvedAt:         Optional[str] = None
 
-
-# ── Schema de SALIDA: Respuesta estándar ─────────────────────
 class PagoResponse(BaseModel):
     success:    bool
     statusCode: int
@@ -124,6 +163,14 @@ class Pago:
 
     def anular(self) -> None:
         self.status = "voided"
+
+    def actualizar_estado(self, new_status: str) -> None:
+        if new_status == "approved":
+            self.aprobar()
+        elif new_status == "declined":
+            self.rechazar()
+        elif new_status == "voided":
+            self.anular()
 
     def to_response(self) -> dict:
         return {
