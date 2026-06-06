@@ -2,13 +2,16 @@
 # PUNTO DE ENTRADA — crea la app FastAPI y registra los routers
 # ─────────────────────────────────────────────────────────────
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.openapi.utils import get_openapi
 from app.api.usuarioApi import router as usuario_router
 from app.api.authApi import router as auth_router
 from app.api.productoApi import router as producto_router
 from app.api.carritoApi import router as carrito_router
 from app.api.pedidoApi import router as pedido_router
+from app.api.pagoApi import router as pago_router
+from app.repositories.usuarioRepository import usuario_repository
 
 app = FastAPI(
     title="Modelo Ecommerce API",
@@ -16,11 +19,70 @@ app = FastAPI(
     version="1.0.0",
 )
 
+# ── Rutas públicas — no requieren autenticación ───────────────
+RUTAS_PUBLICAS = {
+    "/",
+    "/docs",
+    "/openapi.json",
+    "/redoc",
+    "/api/v1/users/",
+    "/api/v1/users/register",
+    "/api/v1/auth/login",
+}
+
+
+# ── Middleware: valida que el usuario del token exista ────────
+@app.middleware("http")
+async def validar_usuario_token(request: Request, call_next):
+    path = request.url.path
+
+    # Saltar rutas públicas y GET del catálogo de productos
+    if (path in RUTAS_PUBLICAS or
+        path.startswith("/docs") or
+        path.startswith("/openapi") or
+        path.startswith("/redoc") or
+        (request.method == "GET" and path.startswith("/api/v1/products"))):
+        return await call_next(request)
+
+    # Leer el header Authorization
+    authorization = request.headers.get("authorization") or \
+                    request.headers.get("Authorization")
+
+    if not authorization or not authorization.startswith("Bearer "):
+        return await call_next(request)  # lo maneja el endpoint
+
+    token = authorization.replace("Bearer ", "").strip()
+    try:
+        user_id_str, role = token.split(":")
+        user_id = int(user_id_str)
+    except Exception:
+        return await call_next(request)  # lo maneja el endpoint
+
+    # ── Validación clave: el usuario debe existir ─────────────
+    usuario = usuario_repository.obtener_por_id(user_id)
+    if not usuario:
+        return JSONResponse(
+            status_code=401,
+            content={
+                "success":    False,
+                "statusCode": 401,
+                "message":    "El usuario del token no existe en el sistema. "
+                              "Por favor regístrate o inicia sesión.",
+                "error":      {"error_code": "USER_NOT_FOUND_IN_TOKEN"}
+            }
+        )
+
+    return await call_next(request)
+
+
+# Registrar routers
 app.include_router(usuario_router)
 app.include_router(auth_router)
 app.include_router(producto_router)
 app.include_router(carrito_router)
 app.include_router(pedido_router)
+app.include_router(pago_router)
+
 
 # ── Botón Authorize en Swagger ────────────────────────────────
 def custom_openapi():
@@ -42,6 +104,7 @@ def custom_openapi():
     return schema
 
 app.openapi = custom_openapi
+
 
 @app.get("/", tags=["Root"])
 def root():
