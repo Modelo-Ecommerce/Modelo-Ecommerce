@@ -49,13 +49,25 @@ class InventarioUpdate(BaseModel):
 
     @model_validator(mode="after")
     def validar_order_id(self):
-        """Regla de dominio: orderId obligatorio si reason = purchase."""
         if self.reason == "purchase" and self.orderId is None:
             raise MissingOrderIdException()
         return self
 
 
-# ── Schema de datos del inventario — consulta ────────────────
+# ── Schema de payload al Servicio de Notificaciones ──────────
+class LowStockAlertData(BaseModel):
+    productId:    int
+    productName:  str
+    currentStock: int
+    threshold:    int
+    alertedAt:    str
+
+class LowStockAlertPayload(BaseModel):
+    event: str = "low_stock_alert"
+    data:  LowStockAlertData
+
+
+# ── Schemas de respuesta ──────────────────────────────────────
 class InventarioData(BaseModel):
     productId:   int
     productName: str
@@ -63,31 +75,26 @@ class InventarioData(BaseModel):
     isLowStock:  bool
     lastUpdated: str
 
-
-# ── Schema de datos del inventario — actualización ───────────
 class InventarioUpdateData(BaseModel):
-    productId:       int
-    productName:     str
-    previousStock:   int
-    quantityChanged: int
-    currentStock:    int
-    isLowStock:      bool
-    updatedAt:       str
+    productId:        int
+    productName:      str
+    previousStock:    int
+    quantityChanged:  int
+    currentStock:     int
+    isLowStock:       bool
+    lowStockNotified: bool = False
+    updatedAt:        str
 
-
-# ── Schema de movimiento de inventario ───────────────────────
 class InventoryMovement(BaseModel):
-    productId:  int
-    operation:  str
-    quantity:   int
-    reason:     str
-    orderId:    Optional[int]
+    productId:   int
+    operation:   str
+    quantity:    int
+    reason:      str
+    orderId:     Optional[int]
     stockBefore: int
     stockAfter:  int
-    createdAt:  str
+    createdAt:   str
 
-
-# ── Schema de SALIDA: Respuesta estándar ─────────────────────
 class InventarioResponse(BaseModel):
     success:    bool
     statusCode: int

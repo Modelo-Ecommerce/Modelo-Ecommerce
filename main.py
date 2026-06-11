@@ -4,6 +4,7 @@
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 from fastapi.openapi.utils import get_openapi
 from app.api.usuarioApi import router as usuario_router
 from app.api.authApi import router as auth_router
@@ -19,6 +20,55 @@ app = FastAPI(
     description="API REST para sistema de comercio electrónico",
     version="1.0.0",
 )
+
+# ── Manejador inteligente de errores de validación ────────────
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    errors = exc.errors()
+
+    # Detectar errores de dominio específicos que deben ser 422
+    errores_422 = {
+        "MIN_PRODUCT_PRICE":   ("El precio del producto no cumple el mínimo requerido.", "PRICE_BELOW_MINIMUM"),
+        "MIN_CART_QUANTITY":   ("El carrito no cumple la cantidad mínima.", "MINIMUM_QUANTITY"),
+        "MIN_ORDER_AMOUNT":    ("El valor del pedido no cumple el mínimo.", "MINIMUM_ORDER_AMOUNT"),
+        "LOW_STOCK_THRESHOLD": ("Stock insuficiente.", "INSUFFICIENT_STOCK"),
+    }
+
+    for error in errors:
+        ctx_str = str(error.get("ctx", ""))
+        msg_str = str(error.get("msg", ""))
+        combined = ctx_str + msg_str
+
+        for keyword, (message, error_code) in errores_422.items():
+            if keyword in combined:
+                return JSONResponse(
+                    status_code=422,
+                    content={
+                        "success": False,
+                        "statusCode": 422,
+                        "message": message,
+                        "error": {
+                            "error_code": error_code,
+                            "details": msg_str,
+                            "timestamp": "2026-03-17"
+                        }
+                    }
+                )
+
+    # Default: 400 para el resto de errores de validación
+    return JSONResponse(
+        status_code=400,
+        content={
+            "success": False,
+            "statusCode": 400,
+            "message": "Datos de entrada inválidos.",
+            "error": {
+                "error_code": "VALIDATION_ERROR",
+                "details": str(errors)
+            }
+        }
+    )
+
 
 # ── Rutas públicas ────────────────────────────────────────────
 RUTAS_PUBLICAS = {
@@ -69,6 +119,7 @@ async def validar_usuario_token(request: Request, call_next):
     return await call_next(request)
 
 
+# Registrar routers
 app.include_router(usuario_router)
 app.include_router(auth_router)
 app.include_router(producto_router)

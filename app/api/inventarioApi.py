@@ -2,14 +2,15 @@
 # CAPA API — rutas HTTP con FastAPI
 # Solo recibe peticiones y llama al servicio.
 # Aquí NO hay lógica de negocio.
-# HU-016: Consultar stock de producto
-# HU-017: Actualizar stock de producto
+# HU-016: Consultar stock
+# HU-017: Actualizar stock
+# HU-018: Notificación de stock bajo
 # ─────────────────────────────────────────────────────────────
 
 from fastapi import APIRouter, HTTPException, status, Header
 from typing import Optional
 from app.domain.inventarioDomain import (
-    InventarioResponse, InventarioUpdate,
+    InventarioResponse, InventarioUpdate, LowStockAlertPayload,
     InsufficientStockForOperationException, MissingOrderIdException
 )
 from app.services.dependencies import inventario_service as service
@@ -32,6 +33,28 @@ def get_usuario_token(authorization: Optional[str] = None) -> dict:
             detail={"success": False, "statusCode": 401,
                     "message": "Token inválido.",
                     "error": {"error_code": "INVALID_TOKEN"}})
+
+
+# ── POST /api/v1/inventory/notify-low-stock — Interno ────────
+@router.post("/notify-low-stock", status_code=status.HTTP_200_OK)
+def recibir_notificacion_stock_bajo(payload: LowStockAlertPayload):
+    """
+    Endpoint interno consumido por InventoryService.notificarStockBajo().
+    Simula el Servicio de Notificaciones externo.
+    En producción este endpoint estaría en un microservicio separado.
+    """
+    print(
+        f"📧 NOTIFICACIÓN ENVIADA — Evento: {payload.event} | "
+        f"Producto: {payload.data.productName} (id: {payload.data.productId}) | "
+        f"Stock: {payload.data.currentStock} | "
+        f"Umbral: {payload.data.threshold} | "
+        f"Fecha: {payload.data.alertedAt}"
+    )
+    return {
+        "success":        True,
+        "message":        "Notificación de stock bajo enviada correctamente.",
+        "notificationId": f"notif_{payload.data.productId}_{payload.data.currentStock}"
+    }
 
 
 # ── GET /api/v1/inventory/{productId} — Consultar stock ──────
@@ -60,7 +83,7 @@ def consultar_stock(productId: int,
               status_code=status.HTTP_200_OK)
 def actualizar_stock(productId: int, datos: InventarioUpdate,
                      authorization: Optional[str] = Header(None)):
-    """Actualiza el stock de un producto. Solo administradores."""
+    """Actualiza el stock. Si queda ≤ 5 notifica automáticamente. Solo admin."""
     usuario_actual = get_usuario_token(authorization)
     try:
         return service.actualizar_stock(productId, datos, usuario_actual["role"])
