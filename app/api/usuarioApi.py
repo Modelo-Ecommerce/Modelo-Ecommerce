@@ -180,3 +180,5 @@ def eliminar_usuario(id: int, authorization: Optional[str] = Header(None)):
                 "error": {"error_code": "USER_NOT_FOUND", "details": str(e)}
             }
         )
+    
+    
