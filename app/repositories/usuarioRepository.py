@@ -14,6 +14,25 @@ class UsuarioRepository:
     def __init__(self):
         self._datos: dict[int, Usuario] = {}
         self._siguiente_id: int = 1
+        self._precargar_usuario_inactivo()
+
+    def _precargar_usuario_inactivo(self):
+        """Usuario inactivo para probar el caso 3 de HU-001."""
+        import bcrypt
+        password_hash = bcrypt.hashpw(
+            "inactivo123".encode("utf-8"), bcrypt.gensalt()
+        ).decode("utf-8")
+        usuario = Usuario(
+            id       = self._siguiente_id,
+            name     = "Usuario Inactivo",
+            email    = "inactivo@test.com",
+            phone    = "3001234567",
+            role     = "client",
+            password = password_hash,
+        )
+        usuario.status = "inactive"
+        self._datos[self._siguiente_id] = usuario
+        self._siguiente_id += 1    
 
     def obtener_todos(self) -> list[Usuario]:
         return list(self._datos.values())
